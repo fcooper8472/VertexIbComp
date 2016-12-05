@@ -116,12 +116,14 @@ void AngularVariationMembraneForce<DIM>::CalculateForcesOnElement(ImmersedBounda
         // Index of the next node, calculated modulo number of nodes in this element
         unsigned next_idx = (node_idx + 1) % num_nodes;
 
-        double modified_spring_constant = spring_constant;
-        double modified_rest_length = rest_length;
-
         // Hooke's law linear spring force
         elastic_force_to_next_node[node_idx] = mpMesh->GetVectorFromAtoB(rElement.GetNodeLocation(node_idx), rElement.GetNodeLocation(next_idx));
         normed_dist = norm_2(elastic_force_to_next_node[node_idx]);
+
+        double cos_theta = fabs(elastic_force_to_next_node[node_idx][1]) / normed_dist;
+        double modified_spring_constant = spring_constant * (1.0 + cos_theta);
+        double modified_rest_length = rest_length;
+
         elastic_force_to_next_node[node_idx] *= modified_spring_constant * (normed_dist - modified_rest_length) / normed_dist;
     }
 
