@@ -64,7 +64,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 class TestThreeRegionSimulation : public AbstractCellBasedTestSuite
 {
 public:
-    void TestThreeRegionSim() throw(Exception)
+    void TestBasicHoneycombSim() throw(Exception)
     {
         /*
          * @param numElementsX  the number of cells from left to right along the domain
@@ -77,6 +77,8 @@ public:
         ImmersedBoundaryMesh<2, 2>* p_mesh = gen.GetMesh();
 
         p_mesh->SetNumGridPtsXAndY(256);
+
+        std::cout << p_mesh->GetSpacingRatio() << std::endl;
 
         std::vector<CellPtr> cells;
         MAKE_PTR(DifferentiatedCellProliferativeType, p_diff_type);
