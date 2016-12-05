@@ -35,23 +35,23 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "AngularVariationMembraneForce.hpp"
 
-template<unsigned DIM>
+template <unsigned DIM>
 AngularVariationMembraneForce<DIM>::AngularVariationMembraneForce()
-    : AbstractImmersedBoundaryForce<DIM>(),
-      mpMesh(NULL),
-      mSpringConstant(1e6),
-      mRestLengthMultiplier(0.5)
+        : AbstractImmersedBoundaryForce<DIM>(),
+          mpMesh(NULL),
+          mSpringConstant(1e6),
+          mRestLengthMultiplier(0.5)
 {
 }
 
-template<unsigned DIM>
+template <unsigned DIM>
 AngularVariationMembraneForce<DIM>::~AngularVariationMembraneForce()
 {
 }
 
-template<unsigned DIM>
+template <unsigned DIM>
 void AngularVariationMembraneForce<DIM>::AddImmersedBoundaryForceContribution(std::vector<std::pair<Node<DIM>*, Node<DIM>*> >& rNodePairs,
-        ImmersedBoundaryCellPopulation<DIM>& rCellPopulation)
+                                                                              ImmersedBoundaryCellPopulation<DIM>& rCellPopulation)
 {
     // This is only run once, on the first pass, and performs a set-up of all necessary class members
     if (mpMesh == NULL)
@@ -74,8 +74,8 @@ void AngularVariationMembraneForce<DIM>::AddImmersedBoundaryForceContribution(st
     }
 }
 
-template<unsigned DIM>
-template<unsigned ELEMENT_DIM, unsigned SPACE_DIM>
+template <unsigned DIM>
+template <unsigned ELEMENT_DIM, unsigned SPACE_DIM>
 void AngularVariationMembraneForce<DIM>::CalculateForcesOnElement(ImmersedBoundaryElement<ELEMENT_DIM, SPACE_DIM>& rElement)
 {
     // Get index and number of nodes of current element
@@ -138,31 +138,31 @@ void AngularVariationMembraneForce<DIM>::CalculateForcesOnElement(ImmersedBounda
     }
 }
 
-template<unsigned DIM>
+template <unsigned DIM>
 void AngularVariationMembraneForce<DIM>::SetSpringConstant(double springConstant)
 {
     mSpringConstant = springConstant;
 }
 
-template<unsigned DIM>
+template <unsigned DIM>
 double AngularVariationMembraneForce<DIM>::GetSpringConstant()
 {
     return mSpringConstant;
 }
 
-template<unsigned DIM>
+template <unsigned DIM>
 void AngularVariationMembraneForce<DIM>::SetRestLengthMultiplier(double restLengthMultiplier)
 {
     mRestLengthMultiplier = restLengthMultiplier;
 }
 
-template<unsigned DIM>
+template <unsigned DIM>
 double AngularVariationMembraneForce<DIM>::GetRestLengthMultiplier()
 {
     return mRestLengthMultiplier;
 }
 
-template<unsigned DIM>
+template <unsigned DIM>
 void AngularVariationMembraneForce<DIM>::OutputImmersedBoundaryForceParameters(out_stream& rParamsFile)
 {
     *rParamsFile << "\t\t\t<SpringConstant>" << mSpringConstant << "</SpringConstant>\n";
