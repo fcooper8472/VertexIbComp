@@ -72,13 +72,6 @@ void AngularVariationMembraneForce<DIM>::AddImmersedBoundaryForceContribution(st
     {
         CalculateForcesOnElement(*elem_it);
     }
-
-    for (typename ImmersedBoundaryMesh<DIM, DIM>::ImmersedBoundaryLaminaIterator lam_it = mpMesh->GetLaminaIteratorBegin();
-         lam_it != mpMesh->GetLaminaIteratorEnd();
-         ++lam_it)
-    {
-        CalculateForcesOnElement(*lam_it);
-    }
 }
 
 template<unsigned DIM>
@@ -112,21 +105,10 @@ void AngularVariationMembraneForce<DIM>::CalculateForcesOnElement(ImmersedBounda
     double spring_constant;
     double rest_length;
 
-    // Determine if we're in a lamina or not
-    if(ELEMENT_DIM < SPACE_DIM)
-    {
-        node_spacing = mpMesh->GetAverageNodeSpacingOfLamina(elem_idx, false);
+    node_spacing = mpMesh->GetAverageNodeSpacingOfElement(elem_idx, false);
 
-        spring_constant = mBasementSpringConstantModifier * mSpringConstant * mIntrinsicSpacingSquared / (node_spacing * node_spacing);
-        rest_length = mBasementRestLengthModifier * mRestLengthMultiplier * node_spacing;
-    }
-    else // regular element
-    {
-        node_spacing = mpMesh->GetAverageNodeSpacingOfElement(elem_idx, false);
-
-        spring_constant = mSpringConstant * mIntrinsicSpacingSquared / (node_spacing * node_spacing);
-        rest_length = mRestLengthMultiplier * node_spacing;
-    }
+    spring_constant = mSpringConstant * mIntrinsicSpacingSquared / (node_spacing * node_spacing);
+    rest_length = mRestLengthMultiplier * node_spacing;
 
     // Loop over nodes and calculate the force exerted on node i+1 by node i
     for (unsigned node_idx = 0; node_idx < num_nodes; node_idx++)
