@@ -113,4 +113,4 @@ public:
     }
 };
 
-#endif /*TESTTHREEPREGIONSIMULATION_HPP_*/
+#endif /*TESTHONEYCOMBSIMULATION_HPP_*/
