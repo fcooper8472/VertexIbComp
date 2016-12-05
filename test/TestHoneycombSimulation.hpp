@@ -39,7 +39,6 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Needed for the test environment
 #include "AbstractCellBasedTestSuite.hpp"
 
-#include "CellRegionWriter.hpp"
 #include "CellsGenerator.hpp"
 #include "DifferentiatedCellProliferativeType.hpp"
 #include "FluidSource.hpp"
