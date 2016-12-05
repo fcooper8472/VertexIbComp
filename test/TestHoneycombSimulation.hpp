@@ -73,7 +73,7 @@ public:
          * @param proportionalGap  the proportion of space between elements
          * @param padding  the minimum padding around the edge of the generated mesh
          */
-        ImmersedBoundaryHoneycombMeshGenerator gen(10, 10, 6, 0.02, 0.2);
+        ImmersedBoundaryHoneycombMeshGenerator gen(10, 10, 6, 0.1, 0.2);
         ImmersedBoundaryMesh<2, 2>* p_mesh = gen.GetMesh();
 
         p_mesh->SetNumGridPtsXAndY(256);
