@@ -144,9 +144,14 @@ public:
     virtual ImmersedBoundaryMesh<2,2>* GetMesh();
 
     /**
-     * @return A vector representing the polygon distribution of the generated mesh, triangles upwards
+     * Calculate the polygon distribution for the underlying vertex mesh: number of {0, 1, 2, 3, 4, 5,..., 12+}-gons.
+     * Note that the vector will always begin {0, 0, 0, ...} as there can be no 0, 1, or 2-gons, but this choice means
+     * that accessing the nth element of the vector gives you the number of n-gons which seems to be most natural.
+     * All 12-sided and higher order polygons are accumulated in the array[12] position.
+     *
+     * @return an array of length 13 representing the polygon distribution.
      */
-    std::vector<double> GetPolygonDistribution();
+    std::array<unsigned, 13> GetVertexMeshPolygonDistribution();
 
     /**
      * Computes the coefficient of variation of the areas of elements in the mesh, defined to be the sample standard

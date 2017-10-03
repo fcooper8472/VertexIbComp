@@ -41,6 +41,8 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "MutableVertexMesh.hpp"
 #include "UblasCustomFunctions.hpp"
 
+#include <vtkKochanekSpline.h>
+
 VoronoiImmersedBoundaryMeshGenerator::VoronoiImmersedBoundaryMeshGenerator(unsigned numElementsX,
                                                                            unsigned numElementsY,
                                                                            unsigned numRelaxationSteps,
@@ -64,9 +66,11 @@ VoronoiImmersedBoundaryMeshGenerator::VoronoiImmersedBoundaryMeshGenerator(unsig
     assert(proportionalGapBetweenElements > 0.0);
     assert(proportionalGapBetweenElements < 1.0);
 
+    // Get a Mutable Vertex Mesh from the existing voronoi generator, and perform a deep copy into mpVertexMesh
     VoronoiVertexMeshGenerator vertex_mesh_gen(mNumElementsX, mNumElementsY, mNumRelaxationSteps);
     DeepCopyVertexMesh(vertex_mesh_gen.GetMeshAfterReMesh());
 
+    // Use mpVertexMesh to create an IB mesh in mpIbMesh with the same geometry
     GenerateImmersedBoundaryMesh();
 }
 
@@ -139,14 +143,15 @@ void VoronoiImmersedBoundaryMeshGenerator::GenerateImmersedBoundaryMesh()
     const double vertex_mesh_height = bounding_box.GetWidth(1u);
     const double max_size_of_vertex_mesh = std::max(vertex_mesh_width, vertex_mesh_height);
     const double scale_factor = mMaxWidthOrHeightOfMesh / max_size_of_vertex_mesh;
+    const double absolute_gap = mProportionalGapBetweenElements * mMaxWidthOrHeightOfMesh / std::max(mNumElementsX, mNumElementsY);
 
     // Determine the gap needed in order to centre the scaled IB mesh within the bounding box [0,1]x[0,1]
     const double left_gap = 0.5 * (1.0 - (vertex_mesh_width * scale_factor));
     const double bottom_gap = 0.5 * (1.0 - (vertex_mesh_height * scale_factor));
 
     // The displacement which, when added to the scaled node locations, will centre the new IB mesh in [0,1]x[0,1]
-    const auto displacement = Create_c_vector(left_gap + bounding_box.rGetLowerCorner()[0] * scale_factor,
-                                              bottom_gap + bounding_box.rGetLowerCorner()[1] * scale_factor);
+    const auto displacement = Create_c_vector(left_gap - bounding_box.rGetLowerCorner()[0] * scale_factor,
+                                              bottom_gap - bounding_box.rGetLowerCorner()[1] * scale_factor);
 
     // Containers in which to store the new nodes and elements
     std::vector<Node<2>*> new_nodes;
@@ -154,28 +159,81 @@ void VoronoiImmersedBoundaryMeshGenerator::GenerateImmersedBoundaryMesh()
 
     for (unsigned elem_idx = 0; elem_idx < mpVertexMesh->GetNumElements(); ++elem_idx)
     {
-        VertexElement<2, 2>* const p_elem = mpVertexMesh->GetElement(elem_idx);
-        const unsigned num_nodes_elem = p_elem->GetNumNodes();
+        VertexElement<2, 2>* const p_vertex_elem = mpVertexMesh->GetElement(elem_idx);
+        const unsigned num_nodes_elem = p_vertex_elem->GetNumNodes();
 
         // Calculate the scaled locations (not taking into account shrinking to provide a gap between elements)
-        std::vector<c_vector<double, 2>> scaled_locations(num_nodes_elem);
+        std::vector<c_vector<double, 2>> scaled_locations;
+        scaled_locations.reserve(num_nodes_elem + 1);
         for (unsigned node_local_idx = 0; node_local_idx < num_nodes_elem; ++node_local_idx)
         {
-            scaled_locations[node_local_idx] = (scale_factor * p_elem->GetNode(node_local_idx)->rGetLocation()) + displacement;
+            scaled_locations.emplace_back(displacement + scale_factor * p_vertex_elem->GetNode(node_local_idx)->rGetLocation());
         }
 
+        const c_vector<double, 2> zero_vec = zero_vector<double>(2);
         const c_vector<double, 2> centre_of_mass = std::accumulate(scaled_locations.begin(),
                                                                    scaled_locations.end(),
-                                                                   zero_vector<double>(2)) / scaled_locations.size();
+                                                                   zero_vec) / scaled_locations.size();
 
-        // Rescale the locations, taking the gap into account
+        // Rescale the locations towards the centre of mass, to leave the required gap between elements
         for (auto& location : scaled_locations)
         {
-            location = centre_of_mass + (1.0 - mProportionalGapBetweenElements) * (location - centre_of_mass);
+            const double vec_length = norm_2(location - centre_of_mass);
+            location = centre_of_mass + (1.0 - absolute_gap / vec_length) * (location - centre_of_mass);
         }
 
-        const double perimeter_estimate = mpVertexMesh->GetSurfaceAreaOfElement(elem_idx) * scale_factor * (1.0 - mProportionalGapBetweenElements);
+        // Put the first point back in at the end, to form a closed loop
+        scaled_locations.resize(scaled_locations.size() + 1);
+        scaled_locations.back() = scaled_locations.front();
+
+        // Get the partial sum of perimeter elements, needed for parametric spline points
+        std::vector<double> partial_perimeter_sum(scaled_locations.size(), 0.0);
+        for (unsigned i = 1; i < scaled_locations.size(); ++i)
+        {
+            partial_perimeter_sum[i] = partial_perimeter_sum[i-1] + norm_2(scaled_locations[i] - scaled_locations[i-1]);
+        }
+
+        // Create splines for the interpolation
+        auto x_spline = vtkSmartPointer<vtkKochanekSpline>::New();
+        x_spline->SetDefaultTension(1.0);
+        x_spline->SetDefaultContinuity(-1.0);
+        x_spline->SetDefaultBias(0.0);
+        x_spline->SetClosed(true);
+
+        auto y_spline = vtkSmartPointer<vtkKochanekSpline>::New();
+        y_spline->SetDefaultTension(1.0);
+        y_spline->SetDefaultContinuity(-1.0);
+        y_spline->SetDefaultBias(0.0);
+        y_spline->SetClosed(true);
+
+        // Add correctly scaled and located points to the splines
+        for (unsigned i = 0; i < scaled_locations.size(); ++i)
+        {
+            x_spline->AddPoint(partial_perimeter_sum[i], scaled_locations[i][0]);
+            y_spline->AddPoint(partial_perimeter_sum[i], scaled_locations[i][1]);
+        }
+
+        // Calculate the required number of nodes for this element, and their spacing to provide a uniform distribution
+        const double& perimeter = partial_perimeter_sum.back();
+        const double ideal_node_spacing = mTargetNodeSpacingRatio / mNumFluidGridPoints;
+        const unsigned num_ib_nodes = std::ceil(perimeter / ideal_node_spacing);
+        const double actual_spacing = perimeter / num_ib_nodes;
+
+        // Evaluate the splines at equally-spaced points to create new nodes for the IB mesh at required locations
+        std::vector<Node<2>*> nodes_this_elem;
+        for (unsigned i = 0; i < num_ib_nodes; ++i)
+        {
+            const double t = actual_spacing * i;
+            new_nodes.emplace_back(new Node<2>(new_nodes.size(), true, x_spline->Evaluate(t), y_spline->Evaluate(t)));
+            nodes_this_elem.emplace_back(new_nodes.back());
+        }
+
+        // Create the element and set whether it is on the boundary or not
+        new_elems.emplace_back(new ImmersedBoundaryElement<2, 2>(new_elems.size(), nodes_this_elem));
+        new_elems.back()->SetIsBoundaryElement(p_vertex_elem->IsElementOnBoundary());
     }
+
+    mpIbMesh = new ImmersedBoundaryMesh<2, 2>(new_nodes, new_elems, {}, mNumFluidGridPoints, mNumFluidGridPoints);
 }
 
 ImmersedBoundaryMesh<2,2>* VoronoiImmersedBoundaryMeshGenerator::GetMesh()
@@ -188,49 +246,21 @@ MutableVertexMesh<2,2>* VoronoiImmersedBoundaryMeshGenerator::GetMutableVertexMe
     return mpVertexMesh;
 }
 
-std::vector<double> VoronoiImmersedBoundaryMeshGenerator::GetPolygonDistribution()
+std::array<unsigned, 13> VoronoiImmersedBoundaryMeshGenerator::GetVertexMeshPolygonDistribution()
 {
-//    assert(mpMesh != nullptr);
-//
-//    // Number of elements in the mesh
-//    unsigned num_elems = mpMesh->GetNumElements();
-//
-//    // Store the number of each class of polygons
-//    std::vector<unsigned> num_polygons(mMaxExpectedNumSidesPerPolygon - 2, 0);
-//
-//    // Container to return the polygon distribution
-//    std::vector<double> polygon_dist;
-//
-//    // Loop over elements in the mesh to get the number of each class of polygon
-//    for (unsigned elem_idx = 0; elem_idx < num_elems; elem_idx++)
-//    {
-//        unsigned num_nodes_this_elem = mpMesh->GetElement(elem_idx)->GetNumNodes();
-//
-//        // All polygons are assumed to have 3, 4, 5, ..., mMaxExpectedNumSidesPerPolygon sides
-//        assert(num_nodes_this_elem > 2);
-//        assert(num_nodes_this_elem <= mMaxExpectedNumSidesPerPolygon);
-//
-//        // Increment correct place in counter - triangles in place 0, squares in 1, etc
-//        num_polygons[num_nodes_this_elem - 3]++;
-//    }
-//
-//    // Loop over the vector of polygon numbers and calculate the distribution vector to return
-//    unsigned elems_accounted_for = 0;
-//    for (unsigned polygon = 0 ; polygon < num_polygons.size() ; polygon++)
-//    {
-//        elems_accounted_for += num_polygons[polygon];
-//
-//        polygon_dist.push_back(static_cast<double>(num_polygons[polygon]) / static_cast<double>(num_elems));
-//
-//        // Only fill the vector of polygon distributions to the point where there are none of higher class in the mesh
-//        if (elems_accounted_for == num_elems)
-//        {
-//            break;
-//        }
-//    }
-//
-//    return polygon_dist;
-    return 0;
+    std::array<unsigned, 13> polygon_dist = {{0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u}};
+
+    for (auto elem_it = mpVertexMesh->GetElementIteratorBegin(); elem_it != mpVertexMesh->GetElementIteratorEnd(); ++elem_it)
+    {
+        if (!elem_it->IsElementOnBoundary())
+        {
+            // Accumulate all 12+ sided shapes
+            unsigned num_neighbours = std::min<unsigned>(12u, mpVertexMesh->GetNeighbouringElementIndices(elem_it->GetIndex()).size());
+            polygon_dist[num_neighbours]++;
+        }
+    }
+
+    return polygon_dist;
 }
 
 double VoronoiImmersedBoundaryMeshGenerator::GetAreaCoefficientOfVariation()
