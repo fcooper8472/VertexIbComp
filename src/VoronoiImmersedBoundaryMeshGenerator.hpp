@@ -108,8 +108,10 @@ public:
      * @param numElementsX  The number of elements requested across the mesh
      * @param numElementsY  The number of elements requested up the mesh
      * @param numRelaxationSteps  The number of Lloyd's Relaxation steps in the Voronoi iteration
+     * @param numFluidGridPoints  The number of fluid mesh points, which determines the node spacing (with targetNodeSpacingRatio)
      * @param maxWidthOrHeightOfMesh The maximum width or height the mesh may be (default 0.9)
      * @param proportionalGapBetweenElements The gap between elements as a proportion of cell size (default 5%)
+     * @param targetNodeSpacingRatio The target ratio of node spacing to fluid mesh spacing (default 0.5)
      */
     VoronoiImmersedBoundaryMeshGenerator(unsigned numElementsX,
                                          unsigned numElementsY,
