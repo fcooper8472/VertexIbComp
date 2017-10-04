@@ -51,6 +51,8 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Simulation does not run in parallel
 #include "FakePetscSetup.hpp"
 
+#include "Timer.hpp"
+
 class TestPolygonDistributionRobustness : public AbstractCellBasedTestSuite
 {
 public:
@@ -58,16 +60,34 @@ public:
     void TestRobustnessWithElementGap() throw(Exception)
     {
         // Parameters for investigation
-        const unsigned num_runs_per_gap = 10u;
-        const unsigned num_gaps = 10u;
-        const std::array<double> min_max_gap = {{0.01, 0.1}};  // 1% to 10%
+        const unsigned num_runs_per_gap = 5u;
+        const unsigned num_gaps = 5u;
+        const std::array<double, 2> min_max_gap = {{0.05, 0.06}};  // 1% to 10%
 
         // Parameters for mesh
-        const unsigned num_elements_x = 20u;
-        const unsigned num_elements_y = 20u;
+        const unsigned num_elements_x = 15u;
+        const unsigned num_elements_y = 15u;
         const unsigned num_lloyd_steps = 3u;
-        const unsigned num_fluid_mesh_pts = 128u;
+        const unsigned num_fluid_mesh_pts = 256u;
         const double max_mesh_size = 0.9;
+
+        // Comparison lambda for difference between two polygon distributions
+        auto abs_difference = [](const std::array<unsigned, 13>& truth, const std::array<unsigned, 13>& compare) -> double
+                              {
+                                  const unsigned total_elems = std::accumulate(truth.begin(), truth.end(), 0u);
+                                  double cumulative_difference = 0.0;
+                                  for (unsigned i = 0; i < truth.size(); ++i)
+                                  {
+                                      // Being very (probably more than necessary) careful about subtracting unsigned values
+                                      auto t = static_cast<double>(truth[i]);
+                                      auto c = static_cast<double>(compare[i]);
+                                      cumulative_difference += std::fabs(t - c);
+                                  }
+                                  PRINT_VECTOR(truth);
+                                  PRINT_VECTOR(compare);
+                                  PRINT_2_VARIABLES(cumulative_difference, total_elems);
+                                  return cumulative_difference / total_elems;
+                              };
 
         // Vector of seeds
         std::vector<unsigned> seeds(num_runs_per_gap);
@@ -87,28 +107,48 @@ public:
         PRINT_VECTOR(gaps);
 
 
+        Timer timer;
+        timer.Reset();
+
+        double gen_time = 0.0;
+        double dist_time = 0.0;
+        double total_time = timer.GetWallTime();
+
         for (const unsigned& seed : seeds)
         {
             for (const double& gap : gaps)
             {
                 RandomNumberGenerator::Instance()->Reseed(seed);
 
+                timer.Reset();
                 VoronoiImmersedBoundaryMeshGenerator gen(num_elements_x,
                                                          num_elements_y,
                                                          num_lloyd_steps,
                                                          num_fluid_mesh_pts,
                                                          max_mesh_size,
                                                          gap);
+                gen_time += timer.GetElapsedTime();
 
                 ImmersedBoundaryMesh<2, 2>* p_mesh = gen.GetMesh();
 
                 auto vertex_dist = gen.GetVertexMeshPolygonDistribution();
-                auto ib_dist = p_mesh->GetPolygonDistribution();
 
-                PRINT_VECTOR(vertex_dist);
-                PRINT_VECTOR(ib_dist);
+                timer.Reset();
+                auto ib_dist = p_mesh->GetPolygonDistribution();
+                dist_time += timer.GetElapsedTime();
+                timer.Reset();
+
+                PRINT_VARIABLE(abs_difference(vertex_dist, ib_dist));
             }
         }
+
+        total_time = timer.GetWallTime() - total_time;
+
+        PRINT_VARIABLE(gen_time);
+        PRINT_VARIABLE(dist_time);
+        PRINT_VARIABLE(total_time);
+        PRINT_VARIABLE(100.0 * gen_time / total_time);
+        PRINT_VARIABLE(100.0 * dist_time / total_time);
     }
 };
 
