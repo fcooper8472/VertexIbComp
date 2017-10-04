@@ -74,25 +74,16 @@ public:
          * @param numElementsX  The number of elements requested across the mesh
          * @param numElementsY  The number of elements requested up the mesh
          * @param numRelaxationSteps  The number of Lloyd's Relaxation steps in the Voronoi iteration
+         * @param numFluidGridPoints  The number of fluid mesh points, which determines the node spacing (with targetNodeSpacingRatio)
          * @param maxWidthOrHeightOfMesh The maximum width or height the mesh may be (default 0.9)
          * @param proportionalGapBetweenElements The gap between elements as a proportion of cell size (default 5%)
+         * @param targetNodeSpacingRatio The target ratio of node spacing to fluid mesh spacing (default 0.5)
          */
-        VoronoiImmersedBoundaryMeshGenerator gen(10, 10, 3, 64);
+        VoronoiImmersedBoundaryMeshGenerator gen(20, 20, 3, 128, 0.9, 0.08, 0.5);
         ImmersedBoundaryMesh<2, 2>* p_mesh = gen.GetMesh();
 
-//        PRINT_VARIABLE(p_mesh->GetNumNodes());
-//        for (const auto& p_node : p_mesh->rGetNodes())
-//        {
-//            PRINT_VECTOR(p_node->rGetLocation());
-//        }
-
         auto vertex_dist = gen.GetVertexMeshPolygonDistribution();
-        auto ib_dist = p_mesh->GetPolygonDistribution();
-
-
-
-        PRINT_VECTOR(vertex_dist);
-        PRINT_VECTOR(ib_dist);
+        auto ib_____dist = p_mesh->GetPolygonDistribution();
 
         std::cout << p_mesh->GetSpacingRatio() << std::endl;
 
@@ -119,7 +110,7 @@ public:
         // Add force laws
         MAKE_PTR(ImmersedBoundaryMorseMembraneForce<2>, p_boundary_force);
         p_main_modifier->AddImmersedBoundaryForce(p_boundary_force);
-        p_boundary_force->SetElementWellDepth(1e6);
+        p_boundary_force->SetElementWellDepth(1e8);
         p_boundary_force->SetElementRestLength(0.25);
 
         // Set simulation properties
@@ -127,7 +118,7 @@ public:
         simulator.SetOutputDirectory("VertexIbComp/TestVoroniMesh");
         simulator.SetDt(dt);
         simulator.SetSamplingTimestepMultiple(10);
-        simulator.SetEndTime(3.0 * dt);
+        simulator.SetEndTime(1000.0 * dt);
 
         simulator.Solve();
     }
