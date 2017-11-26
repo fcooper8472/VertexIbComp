@@ -1,3 +1,5 @@
 TestHoneycombSimulation.hpp
 TestPolygonDistributionRobustness.hpp
+TestUniformGridRandomFieldGenerator.hpp
+TestUsingEigen3.hpp
 TestVoronoiImmersedBoundaryMeshGenerator.hpp
