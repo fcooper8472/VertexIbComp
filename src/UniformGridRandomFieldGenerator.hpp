@@ -38,7 +38,9 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <array>
 
+// Eigen includes
 #include <eigen3/Eigen/Dense>
+#include <eigen3/Eigen/Sparse>
 
 #include "ChasteSerialization.hpp"
 #include "UblasVectorInclude.hpp"
@@ -90,6 +92,9 @@ private:
     /** Matrix storing the eigenvectors of the covariance matrix */
     Eigen::MatrixXd mEigenvecs;
 
+    /** The product of mNumGridPts; the total number of grid points in the cuboid */
+    unsigned mNumTotalGridPts;
+
     /**
      * Archive the member variables.
      *
@@ -107,6 +112,33 @@ private:
         archive & mNumEigenvals;
         archive & mLengthScale;
     }
+
+    /**
+     * Helper method for the constructor that takes parameters as arguments.
+     *
+     * This is the main workhorse of this class.  Fills in mEigenvals and mEigenvecs given the parameters passed to the
+     * constructor, in the case where there is no cache saved to file.
+     *
+     * This method will throw if the Spectra eigen decomposition is unsuccessful.
+     *
+
+     *  * Uses the Spectra routines to calculate the first mEigenvals eigenvalues and eigenvectors of this matrix
+     */
+    void CalculateEigenDecomposition();
+
+    /**
+     * Helper method for CalculateEigenDecomposition().
+     *
+     * This method:
+     *  * Creates a grid of Nodes given mLowerCorner, mUpperCorner, and mNumGridPts
+     *  * Calculates (up to tolerance of ~1e-12) a sparse covariance matrix given the grid and mPeriodicity
+     *
+     * This matrix C is of size mNumTotalGridPts x mNumTotalGridPts, where C_ij is the some function of the distance
+     * between grid points i and j.  Here, that function is exp{-dist_squared / mLengthScale^2}.
+     *
+     * @return and Eigen::SparseMatrix<double> holding the point-point covariance data
+     */
+    Eigen::SparseMatrix<double> CalculateCovarianceMatrix() const noexcept;
 
     /**
      * Get the squared distance between two points, which is needed to calculate the covariance matrix.

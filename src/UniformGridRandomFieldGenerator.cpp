@@ -37,10 +37,13 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <fstream>
 #include <numeric>
 
-#include <eigen3/Eigen/Dense>
+// Spectra includes (for the eigenvalue and eigenvector calculations
+#include <SymEigsSolver.h>
+#include <MatOp/SparseGenMatProd.h>
 
 #include "Exception.hpp"
 #include "FileFinder.hpp"
+#include "Node.hpp"
 #include "UniformGridRandomFieldGenerator.hpp"
 
 #include "Debug.hpp"
@@ -59,8 +62,24 @@ UniformGridRandomFieldGenerator<SPACE_DIM>::UniformGridRandomFieldGenerator(std:
           mNumEigenvals(numEigenvals),
           mLengthScale(lengthScale)
 {
-    // First check if there's a cached random field matching these parameters
-    FileFinder cached_version_file(GetFilenameFromParams(),RelativeTo::ChasteTestOutput);
+    // Calculate the total number of grid points
+    mNumTotalGridPts = std::accumulate(mNumGridPts.begin(), mNumGridPts.end(), 1u, std::multiplies<unsigned>());
+
+    // Check parameters are sensible
+    {
+        for (unsigned dim = 0; dim < SPACE_DIM; ++dim)
+        {
+            assert(mLowerCorner[dim] < mUpperCorner[dim]);
+            assert(mNumGridPts[dim] > 0);
+        }
+
+        assert(mNumEigenvals > 0);
+        assert(mNumEigenvals < mNumTotalGridPts);
+        assert(mLengthScale > 0.0);
+    }
+
+    // Check if there's a cached random field matching these parameters
+    FileFinder cached_version_file(GetFilenameFromParams(), RelativeTo::ChasteTestOutput);
 
     if (cached_version_file.Exists())
     {
@@ -68,8 +87,120 @@ UniformGridRandomFieldGenerator<SPACE_DIM>::UniformGridRandomFieldGenerator(std:
     }
     else
     {
-
+        CalculateEigenDecomposition();
     }
+}
+
+template <unsigned SPACE_DIM>
+void UniformGridRandomFieldGenerator<SPACE_DIM>::CalculateEigenDecomposition()
+{
+    Eigen::SparseMatrix<double> cov_matrix = CalculateCovarianceMatrix();
+
+    Spectra::SparseGenMatProd<double> op(cov_matrix);
+    Spectra::SymEigsSolver<double, Spectra::LARGEST_MAGN, Spectra::SparseGenMatProd<double>> eigs(
+            &op, mNumEigenvals, std::min(2 * mNumEigenvals, mNumTotalGridPts));
+
+    eigs.init();
+    eigs.compute();
+
+    EXCEPT_IF_NOT(eigs.info() == Spectra::SUCCESSFUL);
+
+    mEigenvals = eigs.eigenvalues();
+    mEigenvecs = eigs.eigenvectors();
+}
+
+template <unsigned SPACE_DIM>
+Eigen::SparseMatrix<double> UniformGridRandomFieldGenerator<SPACE_DIM>::CalculateCovarianceMatrix() const noexcept
+{
+    // Generate an appropriate grid
+    std::array<double, SPACE_DIM> grid_spacing;
+
+    for (unsigned dim = 0; dim < SPACE_DIM; ++dim)
+    {
+        const double width_this_dim = mUpperCorner[dim] - mLowerCorner[dim];
+        grid_spacing[dim] = width_this_dim / static_cast<double>(mNumGridPts[dim]);
+    }
+
+    std::vector<Node<2>> nodes;
+
+    // \todo: can probably remove this if I think about it...
+    switch(SPACE_DIM)
+    {
+        case 1:
+        {
+            unsigned idx = 0u;
+            for (unsigned x = 0; x < mNumGridPts[0]; ++x)
+            {
+                const double x_pos = grid_spacing[0] * x;
+                nodes.emplace_back(Node<2>(idx, false, x_pos));
+                idx++;
+            }
+            break;
+        }
+        case 2:
+        {
+            unsigned idx = 0u;
+            for (unsigned y = 0; y < mNumGridPts[1]; ++y)
+            {
+                const double y_pos = grid_spacing[1] * y;
+                for (unsigned x = 0; x < mNumGridPts[0]; ++x)
+                {
+                    const double x_pos = grid_spacing[0] * x;
+                    nodes.emplace_back(Node<2>(idx, false, x_pos, y_pos));
+                    idx++;
+                }
+            }
+            break;
+        }
+        case 3:
+        {
+            unsigned idx = 0u;
+            for (unsigned z = 0; z < mNumGridPts[2]; ++z)
+            {
+                const double z_pos = grid_spacing[2] * z;
+                for (unsigned y = 0; y < mNumGridPts[1]; ++y)
+                {
+                    const double y_pos = grid_spacing[1] * y;
+                    for (unsigned x = 0; x < mNumGridPts[0]; ++x)
+                    {
+                        const double x_pos = grid_spacing[0] * x;
+                        nodes.emplace_back(Node<2>(idx, false, x_pos, y_pos, z_pos));
+                        idx++;
+                    }
+                }
+            }
+            break;
+        }
+        default:
+        NEVER_REACHED;
+    }
+
+    // Create vector of eigen triplets representing the pairwise covariance using the Gaussian covariance function
+    const double length_squared = mLengthScale * mLengthScale;
+    const double tol_cov = -std::log(1e-12);  // \todo: remove this magic number
+    std::vector<Eigen::Triplet<double>> triplets;
+    for (unsigned x = 0; x < mNumTotalGridPts; ++x)
+    {
+        for (unsigned y = 0; y < mNumTotalGridPts; ++y)
+        {
+            const double dist_squared = GetSquaredDistAtoB(nodes[x].rGetLocation(), nodes[y].rGetLocation());
+            const double exponent = dist_squared / length_squared;
+
+            if (exponent < tol_cov)
+            {
+                triplets.emplace_back(Eigen::Triplet<double>(x, y, std::exp(-exponent)));
+            }
+        }
+    }
+
+    // Create a sparse matrix given the grid points
+    Eigen::SparseMatrix<double> cov_matrix(mNumTotalGridPts, mNumTotalGridPts);
+    cov_matrix.setFromTriplets(triplets.begin(), triplets.end());
+
+    const double occupancy_proportion = static_cast<double>(cov_matrix.nonZeros()) / (mNumTotalGridPts * mNumTotalGridPts);
+    PRINT_VARIABLE(occupancy_proportion);
+
+    return cov_matrix;
 }
 
 template <unsigned SPACE_DIM>
@@ -167,13 +298,13 @@ void UniformGridRandomFieldGenerator<SPACE_DIM>::LoadFromCache(const std::string
     mLengthScale = header.mLengthScale;
 
     // Calculate how many grid points there are in total, and resize the eigen data arrays accordingly
-    const unsigned total_gridpts = std::accumulate(mNumGridPts.begin(), mNumGridPts.end(), 1u, std::multiplies<unsigned>());
+    mNumTotalGridPts = std::accumulate(mNumGridPts.begin(), mNumGridPts.end(), 1u, std::multiplies<unsigned>());
     mEigenvals.resize(mNumEigenvals);
-    mEigenvecs.resize(total_gridpts, mNumEigenvals);
+    mEigenvecs.resize(mNumTotalGridPts, mNumEigenvals);
 
     // Read the eigenvalues and eigenvectors into their respective data arrays
     input_file.read((char*) mEigenvals.data(), mNumEigenvals * sizeof(double));
-    input_file.read((char*) mEigenvecs.data(), total_gridpts * mNumEigenvals * sizeof(double));
+    input_file.read((char*) mEigenvecs.data(), mNumTotalGridPts * mNumEigenvals * sizeof(double));
 
     input_file.close();
 }
