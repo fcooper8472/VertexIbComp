@@ -79,7 +79,7 @@ public:
          * @param proportionalGapBetweenElements The gap between elements as a proportion of cell size (default 5%)
          * @param targetNodeSpacingRatio The target ratio of node spacing to fluid mesh spacing (default 0.5)
          */
-        VoronoiImmersedBoundaryMeshGenerator gen(20, 20, 3, 128, 0.9, 0.08, 0.5);
+        VoronoiImmersedBoundaryMeshGenerator gen(10, 10, 3, 128, 0.9, 0.08, 0.5);
         ImmersedBoundaryMesh<2, 2>* p_mesh = gen.GetMesh();
 
         auto vertex_dist = gen.GetVertexMeshPolygonDistribution();
@@ -110,15 +110,15 @@ public:
         // Add force laws
         MAKE_PTR(ImmersedBoundaryMorseMembraneForce<2>, p_boundary_force);
         p_main_modifier->AddImmersedBoundaryForce(p_boundary_force);
-        p_boundary_force->SetElementWellDepth(1e8);
+        p_boundary_force->SetElementWellDepth(1e7);
         p_boundary_force->SetElementRestLength(0.25);
 
         // Set simulation properties
         double dt = 0.01;
         simulator.SetOutputDirectory("VertexIbComp/TestVoroniMesh");
         simulator.SetDt(dt);
-        simulator.SetSamplingTimestepMultiple(10);
-        simulator.SetEndTime(1000.0 * dt);
+        simulator.SetSamplingTimestepMultiple(1);
+        simulator.SetEndTime(200.0 * dt);
 
         simulator.Solve();
     }

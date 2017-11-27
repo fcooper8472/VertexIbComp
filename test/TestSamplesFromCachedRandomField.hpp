@@ -38,9 +38,10 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <cxxtest/TestSuite.h>
 
+#include <array>
+#include <string>
+
 #include "OutputFileHandler.hpp"
-#include "RandomNumberGenerator.hpp"
-#include "UblasCustomFunctions.hpp"
 #include "UniformGridRandomFieldGenerator.hpp"
 
 // These tests do not run in parallel
@@ -55,7 +56,7 @@ public:
      */
     void TestConstructSmallField()
     {
-        // Create a random field over a 3D cuboid
+        // Create a random field over a 2D rectangle
         const std::array<double, 2> lower_corner = {{0.0, 1.0}};
         const std::array<double, 2> upper_corner = {{2.0, 5.0}};
 
