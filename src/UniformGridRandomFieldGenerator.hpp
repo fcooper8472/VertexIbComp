@@ -37,6 +37,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define UNIFORM_GRID_RANDOM_FIELD_GENERATOR_HPP_
 
 #include <array>
+#include <vector>
 
 // Eigen includes
 #include <eigen3/Eigen/Dense>
@@ -66,6 +67,7 @@ class UniformGridRandomFieldGenerator
 private:
 
     friend class boost::serialization::access;
+    friend class TestSamplesFromCachedRandomField;
     friend class TestUniformGridRandomFieldGenerator;
 
     /** Coordinates of the lower corner of the grid */
@@ -94,6 +96,9 @@ private:
 
     /** The product of mNumGridPts; the total number of grid points in the cuboid */
     unsigned mNumTotalGridPts;
+
+    /** Store the calculated grid spacings to avoid recalculation during interpolation */
+    std::array<double, SPACE_DIM> mGridSpacing;
 
     /**
      * Archive the member variables.
@@ -196,9 +201,27 @@ public:
      * Constructor that takes a filename of a pre-cached random field. This constructor will attempt to load the
      * random field from file, and throw if something goes wrong.
      *
-     * @param filename the file name, relative to $CHASTE_TEST_OUTPUT/CachedRandomFields
+     * @param filename the file name, relative to $CHASTE_TEST_OUTPUT
      */
-    UniformGridRandomFieldGenerator(std::string filename);
+    UniformGridRandomFieldGenerator(const std::string filename);
+
+    /**
+     * Sample an instance of the random field.  First, draw mNumTotalGridPts random numbers from N(0,1), and then
+     * create an appropriate linear combination of the eigenvectors.
+     *
+     * @return A vector representing an instance of the random field.
+     */
+    std::vector<double> SampleRandomField() const noexcept;
+
+    /**
+     * Interpolate from the random field by returning the value at the node of the random field closest to the given
+     * location.
+     *
+     * @param rRandomField the random field, assumed obtained from SampleRandomField()
+     * @param rLocation the location to which we identify the value at the closest node in the random field
+     * @return the value of the random field closest to rLocation
+     */
+    double Interpolate(const std::vector<double>& rRandomField, const c_vector<double, SPACE_DIM>& rLocation) const noexcept;
 
     /**
      * Save the calculated random field to cache.  Throws if the file cannot be opened.
@@ -210,7 +233,7 @@ public:
      *
      * 1x RandomFieldCacheHeader (which is sizeof(RandomFieldCacheHeader<SPACE_DIM>) chars)
      * mEigenvals vector (which is mNumEigenvals * sizeof(double) chars)
-     * mEigenvecs matrix (which is total_grid_pts * mNumEigenvals * sizeof(double) chars     *
+     * mEigenvecs matrix (which is total_grid_pts * mNumEigenvals * sizeof(double) chars
      */
     void SaveToCache();
 

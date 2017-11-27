@@ -38,8 +38,12 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <cxxtest/TestSuite.h>
 
+#include "OutputFileHandler.hpp"
+#include "RandomNumberGenerator.hpp"
+#include "UblasCustomFunctions.hpp"
 #include "UniformGridRandomFieldGenerator.hpp"
 
+#include "Debug.hpp"
 // These tests do not run in parallel
 #include "FakePetscSetup.hpp"
 
@@ -49,7 +53,40 @@ public:
 
     void TestConstructor()
     {
-        UniformGridRandomFieldGenerator<2> gen;
+        const unsigned n = 128u;
+
+        UniformGridRandomFieldGenerator<2> gen({{0.0, 0.0}}, {{1.0, 1.0}}, {{n, n}}, {{true, true}}, 1000, 0.03);
+        gen.SaveToCache();
+
+        OutputFileHandler results_handler(".", false);
+        out_stream results_file = results_handler.OpenOutputFile("a_hist.csv");
+
+        auto p_rng = RandomNumberGenerator::Instance();
+
+        for (unsigned i = 0; i < 500; ++i)
+        {
+            auto grf = gen.SampleRandomField();
+
+            // Generate some random points
+            for (unsigned j = 0; j < 100; ++j)
+            {
+                c_vector<double, 2> vec = Create_c_vector(p_rng->ranf(), p_rng->ranf());
+                (*results_file) << gen.Interpolate(grf, vec) << '\n';
+            }
+        }
+
+
+
+        // Tidy up
+        results_file->close();
+
+    }
+
+    void TestGetFilenameFromParams()
+    {
+//        UniformGridRandomFieldGenerator<2> gen;
+//
+//        PRINT_VARIABLE(gen.GetFilenameFromParams());
     }
 };
 

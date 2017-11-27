@@ -33,18 +33,21 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+#include "UniformGridRandomFieldGenerator.hpp"
+
 #include <iomanip>
 #include <fstream>
+
 #include <numeric>
-
-// Spectra includes (for the eigenvalue and eigenvector calculations
+// Spectra includes (for the eigenvalue and eigenvector calculations)
 #include <SymEigsSolver.h>
-#include <MatOp/SparseGenMatProd.h>
 
+#include <MatOp/SparseGenMatProd.h>
 #include "Exception.hpp"
 #include "FileFinder.hpp"
 #include "Node.hpp"
-#include "UniformGridRandomFieldGenerator.hpp"
+#include "RandomNumberGenerator.hpp"
+#include "Warnings.hpp"
 
 #include "Debug.hpp"
 
@@ -78,6 +81,12 @@ UniformGridRandomFieldGenerator<SPACE_DIM>::UniformGridRandomFieldGenerator(std:
         assert(mLengthScale > 0.0);
     }
 
+    // Calculate the grid spacings
+    for (unsigned dim = 0; dim < SPACE_DIM; ++dim)
+    {
+        mGridSpacing[dim] = (mUpperCorner[dim] - mLowerCorner[dim]) / mNumGridPts[dim];
+    }
+
     // Check if there's a cached random field matching these parameters
     FileFinder cached_version_file(GetFilenameFromParams(), RelativeTo::ChasteTestOutput);
 
@@ -89,6 +98,16 @@ UniformGridRandomFieldGenerator<SPACE_DIM>::UniformGridRandomFieldGenerator(std:
     {
         CalculateEigenDecomposition();
     }
+}
+
+template <unsigned SPACE_DIM>
+UniformGridRandomFieldGenerator<SPACE_DIM>::UniformGridRandomFieldGenerator(const std::string filename)
+{
+    // First check the cached random field exists
+    FileFinder cached_version_file(filename, RelativeTo::ChasteTestOutput);
+    EXCEPT_IF_NOT(cached_version_file.Exists());
+
+    LoadFromCache(cached_version_file.GetAbsolutePath());
 }
 
 template <unsigned SPACE_DIM>
@@ -112,15 +131,7 @@ void UniformGridRandomFieldGenerator<SPACE_DIM>::CalculateEigenDecomposition()
 template <unsigned SPACE_DIM>
 Eigen::SparseMatrix<double> UniformGridRandomFieldGenerator<SPACE_DIM>::CalculateCovarianceMatrix() const noexcept
 {
-    // Generate an appropriate grid
-    std::array<double, SPACE_DIM> grid_spacing;
-
-    for (unsigned dim = 0; dim < SPACE_DIM; ++dim)
-    {
-        const double width_this_dim = mUpperCorner[dim] - mLowerCorner[dim];
-        grid_spacing[dim] = width_this_dim / static_cast<double>(mNumGridPts[dim]);
-    }
-
+    // Create a node at each grid location
     std::vector<Node<2>> nodes;
 
     // \todo: can probably remove this if I think about it...
@@ -131,7 +142,7 @@ Eigen::SparseMatrix<double> UniformGridRandomFieldGenerator<SPACE_DIM>::Calculat
             unsigned idx = 0u;
             for (unsigned x = 0; x < mNumGridPts[0]; ++x)
             {
-                const double x_pos = grid_spacing[0] * x;
+                const double x_pos = mGridSpacing[0] * x;
                 nodes.emplace_back(Node<2>(idx, false, x_pos));
                 idx++;
             }
@@ -142,10 +153,10 @@ Eigen::SparseMatrix<double> UniformGridRandomFieldGenerator<SPACE_DIM>::Calculat
             unsigned idx = 0u;
             for (unsigned y = 0; y < mNumGridPts[1]; ++y)
             {
-                const double y_pos = grid_spacing[1] * y;
+                const double y_pos = mGridSpacing[1] * y;
                 for (unsigned x = 0; x < mNumGridPts[0]; ++x)
                 {
-                    const double x_pos = grid_spacing[0] * x;
+                    const double x_pos = mGridSpacing[0] * x;
                     nodes.emplace_back(Node<2>(idx, false, x_pos, y_pos));
                     idx++;
                 }
@@ -157,13 +168,13 @@ Eigen::SparseMatrix<double> UniformGridRandomFieldGenerator<SPACE_DIM>::Calculat
             unsigned idx = 0u;
             for (unsigned z = 0; z < mNumGridPts[2]; ++z)
             {
-                const double z_pos = grid_spacing[2] * z;
+                const double z_pos = mGridSpacing[2] * z;
                 for (unsigned y = 0; y < mNumGridPts[1]; ++y)
                 {
-                    const double y_pos = grid_spacing[1] * y;
+                    const double y_pos = mGridSpacing[1] * y;
                     for (unsigned x = 0; x < mNumGridPts[0]; ++x)
                     {
-                        const double x_pos = grid_spacing[0] * x;
+                        const double x_pos = mGridSpacing[0] * x;
                         nodes.emplace_back(Node<2>(idx, false, x_pos, y_pos, z_pos));
                         idx++;
                     }
@@ -302,6 +313,12 @@ void UniformGridRandomFieldGenerator<SPACE_DIM>::LoadFromCache(const std::string
     mEigenvals.resize(mNumEigenvals);
     mEigenvecs.resize(mNumTotalGridPts, mNumEigenvals);
 
+    // Calculate the remaining unknown: the grid spacing in each dimension, needed for interpolation
+    for (unsigned dim = 0; dim < SPACE_DIM; ++dim)
+    {
+        mGridSpacing[dim] = (mUpperCorner[dim] - mLowerCorner[dim]) / mNumGridPts[dim];
+    }
+
     // Read the eigenvalues and eigenvectors into their respective data arrays
     input_file.read((char*) mEigenvals.data(), mNumEigenvals * sizeof(double));
     input_file.read((char*) mEigenvecs.data(), mNumTotalGridPts * mNumEigenvals * sizeof(double));
@@ -310,27 +327,108 @@ void UniformGridRandomFieldGenerator<SPACE_DIM>::LoadFromCache(const std::string
 }
 
 template <unsigned SPACE_DIM>
+std::vector<double> UniformGridRandomFieldGenerator<SPACE_DIM>::SampleRandomField() const noexcept
+{
+    // Generate mNumTotalGridPts normally-distributed random numbers
+    std::vector<double> samples_from_n01(mNumTotalGridPts);
+    for (unsigned i = 0; i < samples_from_n01.size(); ++i)
+    {
+        samples_from_n01[i] = RandomNumberGenerator::Instance()->StandardNormalRandomDeviate();
+    }
+
+    // Generate the instance of the random field
+    Eigen::VectorXd grf(mNumTotalGridPts);
+    grf.setZero();
+    for (unsigned j = 0; j < mNumEigenvals; ++j)
+    {
+        grf += samples_from_n01[j] * std::sqrt(mEigenvals(j)) * mEigenvecs.col(j);
+    }
+
+    // Translate to a std::vector so that eigen objects aren't leaking out to other places in Chaste
+    return std::vector<double>(grf.data(), grf.data() + grf.size());
+}
+
+template <unsigned SPACE_DIM>
 void UniformGridRandomFieldGenerator<SPACE_DIM>::SaveToCache()
 {
     // Get the absolute file path to the cached file, given the current parameters
     FileFinder cached_version_file(GetFilenameFromParams(), RelativeTo::ChasteTestOutput);
-    std::ofstream output_file(cached_version_file.GetAbsolutePath(), std::ios::out | std::ios::binary);
-    EXCEPT_IF_NOT(output_file.is_open());
 
-    // Generate the header struct
-    RandomFieldCacheHeader<SPACE_DIM> header;
-    header.mLowerCorner = mLowerCorner;
-    header.mUpperCorner = mUpperCorner;
-    header.mNumGridPts = mNumGridPts;
-    header.mPeriodicity = mPeriodicity;
-    header.mNumEigenvals = mNumEigenvals;
-    header.mLengthScale = mLengthScale;
+    // If the cache does not exist, create it
+    if (not cached_version_file.Exists())
+    {
+        std::ofstream output_file(cached_version_file.GetAbsolutePath(), std::ios::out | std::ios::binary);
+        EXCEPT_IF_NOT(output_file.is_open());
 
-    // Write the information to file
-    output_file.write((char*) &header, sizeof(RandomFieldCacheHeader<SPACE_DIM>));
-    output_file.write((char*) mEigenvals.data(), mEigenvals.size() * sizeof(double));
-    output_file.write((char*) mEigenvecs.data(), mEigenvecs.size() * sizeof(double));
-    output_file.close();
+        // Generate the header struct
+        RandomFieldCacheHeader<SPACE_DIM> header;
+        header.mLowerCorner = mLowerCorner;
+        header.mUpperCorner = mUpperCorner;
+        header.mNumGridPts = mNumGridPts;
+        header.mPeriodicity = mPeriodicity;
+        header.mNumEigenvals = mNumEigenvals;
+        header.mLengthScale = mLengthScale;
+
+        // Write the information to file
+        output_file.write((char *) &header, sizeof(RandomFieldCacheHeader<SPACE_DIM>));
+        output_file.write((char *) mEigenvals.data(), mEigenvals.size() * sizeof(double));
+        output_file.write((char *) mEigenvecs.data(), mEigenvecs.size() * sizeof(double));
+        output_file.close();
+    }
+}
+
+template <unsigned SPACE_DIM>
+double UniformGridRandomFieldGenerator<SPACE_DIM>::Interpolate(const std::vector<double>& rRandomField,
+                                                               const c_vector<double, SPACE_DIM>& rLocation) const noexcept
+{
+    assert(mNumTotalGridPts == rRandomField.size());
+
+    std::array<long, SPACE_DIM> nearest_node;
+
+    for (unsigned dim = 0; dim < SPACE_DIM; ++dim)
+    {
+        nearest_node[dim] = std::floor((rLocation[dim] - mLowerCorner[dim]) / mGridSpacing[dim]);
+
+        if (nearest_node[dim] < 0)
+        {
+            nearest_node[dim] = 0;
+            WARNING("Interpolating outside random field grid: does the random field need to be larger?");
+        }
+        else if (nearest_node[dim] >= mNumGridPts[dim])
+        {
+            nearest_node[dim] = mNumGridPts[dim] - 1;
+            WARNING("Interpolating outside random field grid: does the random field need to be larger?");
+        }
+    }
+
+    long linear_index;
+
+    // \todo: double check I'm not calculating the transpose of each point
+    switch(SPACE_DIM)
+    {
+        case 1:
+        {
+            linear_index = nearest_node[0];
+            break;
+        }
+        case 2:
+        {
+            linear_index = nearest_node[0] +
+                           nearest_node[1] * mNumGridPts[0];
+            break;
+        }
+        case 3:
+        {
+            linear_index = nearest_node[0] +
+                           nearest_node[1] * mNumGridPts[0] +
+                           nearest_node[2] * mNumGridPts[0] * mNumGridPts[1];
+            break;
+        }
+        default:
+            NEVER_REACHED;
+    }
+
+    return rRandomField[linear_index];
 }
 
 // Explicit instantiation
