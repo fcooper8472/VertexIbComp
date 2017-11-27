@@ -57,7 +57,7 @@ public:
      *
      * You should only ever run this test in anger in Release mode, or it will take forever to generate the field.
      */
-    void TestGenerateAndCacheRandomField()
+    void TestGenerateAndCache()
     {
         // Define the domain over which the field is calculated
         const std::array<double, 2> lower_corner = {{0.0, 1.0}};

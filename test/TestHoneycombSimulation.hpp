@@ -42,7 +42,6 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "CellsGenerator.hpp"
 #include "DifferentiatedCellProliferativeType.hpp"
 #include "FluidSource.hpp"
-#include "ImmersedBoundaryCellCellInteractionForce.hpp"
 #include "ImmersedBoundaryHoneycombMeshGenerator.hpp"
 #include "ImmersedBoundaryMesh.hpp"
 #include "ImmersedBoundarySimulationModifier.hpp"
