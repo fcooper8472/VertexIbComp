@@ -1,3 +1,4 @@
+TestGenerateAndCacheRandomField.hpp
 TestHoneycombSimulation.hpp
 TestPolygonDistributionRobustness.hpp
 TestSamplesFromCachedRandomField.hpp
