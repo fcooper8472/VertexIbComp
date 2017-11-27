@@ -26,7 +26,6 @@ else()
     message(FATAL_ERROR "Set the environment variable SPECTRA_ROOT to the Spectra directory containing the file 'include/GenEigsComplexShiftSolver.h'.")
 endif()
 
-message(${Chaste_INCLUDES})
 # Here we just depend on core components (nothing application-specific).
 find_package(Chaste COMPONENTS cell_based)
 
