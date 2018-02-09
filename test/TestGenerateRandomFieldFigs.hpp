@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2016, University of Oxford.
+Copyright (c) 2005-2018, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -209,7 +209,7 @@ private:
 
 public:
 
-    void TestGenerateAndOuputDataToFiles() throw(Exception)
+    void TestGenerateAndOuputDataToFiles()
     {
         // Global params
         const double domain_size = 20.0;

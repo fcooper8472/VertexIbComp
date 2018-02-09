@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2016, University of Oxford.
+Copyright (c) 2005-2018, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -57,7 +57,7 @@ class TestPolygonDistributionRobustness : public AbstractCellBasedTestSuite
 {
 public:
 
-    void TestRobustnessWithElementGap() throw(Exception)
+    void TestRobustnessWithElementGap()
     {
         // Parameters for investigation
         const unsigned num_runs_per_gap = 20u;

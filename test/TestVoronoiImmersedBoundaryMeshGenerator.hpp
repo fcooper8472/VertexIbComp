@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2005-2016, University of Oxford.
+Copyright (c) 2005-2018, University of Oxford.
 All rights reserved.
 
 University of Oxford means the Chancellor, Masters and Scholars of the
@@ -68,7 +68,7 @@ class TestThreeRegionSimulation : public AbstractCellBasedTestSuite
 {
 public:
 
-    void TestVoronoiImmersedBoundarySimulation() throw(Exception)
+    void TestVoronoiImmersedBoundarySimulation()
     {
         /*
          * @param numElementsX  The number of elements requested across the mesh
