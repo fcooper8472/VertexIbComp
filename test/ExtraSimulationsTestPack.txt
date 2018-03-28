@@ -2,3 +2,4 @@ TestCellSortingSimulations.hpp
 TestHoneycombSimulation.hpp
 TestPolygonDistributionRobustness.hpp
 TestGenerateRandomFieldFigs.hpp
+TestVoronoiVsHoneycombMeshGen.hpp
