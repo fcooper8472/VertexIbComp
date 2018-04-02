@@ -35,20 +35,25 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "VoronoiImmersedBoundaryMeshGenerator.hpp"
 
-#include "VoronoiVertexMeshGenerator.hpp"
-#include "VertexElement.hpp"
-#include "Node.hpp"
+#include "ChasteMakeUnique.hpp"
+#include "ImmersedBoundaryElement.hpp"
+#include "MeshUtilityFunctions.hpp"
 #include "MutableVertexMesh.hpp"
+#include "Node.hpp"
 #include "UblasCustomFunctions.hpp"
+#include "VertexElement.hpp"
+#include "VoronoiVertexMeshGenerator.hpp"
 
-#include <vtkKochanekSpline.h>
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/segment.hpp>
+#include <boost/geometry/geometries/point.hpp>
 
 VoronoiImmersedBoundaryMeshGenerator::VoronoiImmersedBoundaryMeshGenerator(unsigned numElementsX,
                                                                            unsigned numElementsY,
                                                                            unsigned numRelaxationSteps,
                                                                            unsigned numFluidGridPoints,
                                                                            double maxWidthOrHeightOfMesh,
-                                                                           double proportionalGapBetweenElements,
+                                                                           double absoluteGapBetweenElements,
                                                                            double targetNodeSpacingRatio)
         : mpIbMesh(nullptr),
           mpVertexMesh(nullptr),
@@ -57,36 +62,45 @@ VoronoiImmersedBoundaryMeshGenerator::VoronoiImmersedBoundaryMeshGenerator(unsig
           mNumRelaxationSteps(numRelaxationSteps),
           mNumFluidGridPoints(numFluidGridPoints),
           mMaxWidthOrHeightOfMesh(maxWidthOrHeightOfMesh),
-          mProportionalGapBetweenElements(proportionalGapBetweenElements),
+          mAbsoluteGapBetweenElements(absoluteGapBetweenElements),
           mTargetNodeSpacingRatio(targetNodeSpacingRatio)
 {
     assert(maxWidthOrHeightOfMesh > 0.0);
     assert(maxWidthOrHeightOfMesh < 1.0);
 
-    assert(proportionalGapBetweenElements > 0.0);
-    assert(proportionalGapBetweenElements < 1.0);
+    assert(absoluteGapBetweenElements > 0.0);
+    assert(absoluteGapBetweenElements < 1.0);
+
+    // Scaling necessary to correctly pre-size the vertex mesh to lie in a subset of [0, maxWidthOrHeightOfMesh]^2
+    const auto max_x_y = std::max(numElementsX, numElementsY);
+    const double target_area = (mMaxWidthOrHeightOfMesh * mMaxWidthOrHeightOfMesh) / (max_x_y * max_x_y);
 
     // Get a Mutable Vertex Mesh from the existing voronoi generator, and perform a deep copy into mpVertexMesh
-    VoronoiVertexMeshGenerator vertex_mesh_gen(mNumElementsX, mNumElementsY, mNumRelaxationSteps);
-    DeepCopyVertexMesh(vertex_mesh_gen.GetMeshAfterReMesh());
+    {
+        VoronoiVertexMeshGenerator vertex_mesh_gen(mNumElementsX, mNumElementsY, mNumRelaxationSteps, target_area);
+        DeepCopyAndRepositionVertexMesh(vertex_mesh_gen.GetMesh());
+    }
 
     // Use mpVertexMesh to create an IB mesh in mpIbMesh with the same geometry
     GenerateImmersedBoundaryMesh();
 }
 
-VoronoiImmersedBoundaryMeshGenerator::~VoronoiImmersedBoundaryMeshGenerator()
-{
-    delete mpIbMesh;
-    delete mpVertexMesh;
-}
-
-void VoronoiImmersedBoundaryMeshGenerator::DeepCopyVertexMesh(MutableVertexMesh<2, 2>* pMeshToCopy)
+void VoronoiImmersedBoundaryMeshGenerator::DeepCopyAndRepositionVertexMesh(MutableVertexMesh<2, 2>* pMeshToCopy)
 {
     assert(pMeshToCopy != nullptr);
 
     // We need to construct new nodes and elements so we don't have mpVertexMesh sharing data with pMeshToCopy
     std::vector<Node<2>*> new_nodes;
     std::vector<VertexElement<2,2>*> new_elems;
+
+    // Determine the vector necessary to reposition the mesh to the centre of [0,1]x[0,1]
+    const bool longer_in_x = mNumElementsY < mNumElementsX;
+    const double length_ratio = longer_in_x ? (double) mNumElementsY / mNumElementsX : (double) mNumElementsX / mNumElementsY;
+
+    const double long_margin = 0.5 * (1.0 - mMaxWidthOrHeightOfMesh);
+    const double short_margin = 0.5 * (1.0 - (mMaxWidthOrHeightOfMesh * length_ratio));
+
+    const auto correction = longer_in_x ? Create_c_vector(short_margin, long_margin) : Create_c_vector(long_margin, short_margin);
 
     // Copy nodes
     for (unsigned node_idx = 0 ; node_idx < pMeshToCopy->GetNumNodes() ; node_idx++)
@@ -101,8 +115,8 @@ void VoronoiImmersedBoundaryMeshGenerator::DeepCopyVertexMesh(MutableVertexMesh<
         // We assume the nodes are sequentially ordered. This should be the case as the mesh is from a generator.
         assert(copy_index == node_idx);
 
-        // Create a new node and emplace it at the back of new_nodes
-        new_nodes.emplace_back(new Node<2>(copy_index, copy_location, copy_is_boundary));
+        // Create a new node and emplace it at the back of new_nodes, with corrected location
+        new_nodes.emplace_back(new Node<2>(copy_index, copy_location + correction, copy_is_boundary));
     }
 
     // Copy elements
@@ -130,28 +144,12 @@ void VoronoiImmersedBoundaryMeshGenerator::DeepCopyVertexMesh(MutableVertexMesh<
         new_elems.emplace_back(new VertexElement<2,2>(copy_index, nodes_this_elem));
     }
 
-    mpVertexMesh = new MutableVertexMesh<2,2>(new_nodes, new_elems);
+    mpVertexMesh = our::make_unique<MutableVertexMesh<2,2>>(new_nodes, new_elems);
 }
 
 void VoronoiImmersedBoundaryMeshGenerator::GenerateImmersedBoundaryMesh()
 {
     assert(mpVertexMesh != nullptr);
-
-    ChasteCuboid<2> bounding_box = mpVertexMesh->CalculateBoundingBox();
-
-    const double vertex_mesh_width = bounding_box.GetWidth(0u);
-    const double vertex_mesh_height = bounding_box.GetWidth(1u);
-    const double max_size_of_vertex_mesh = std::max(vertex_mesh_width, vertex_mesh_height);
-    const double scale_factor = mMaxWidthOrHeightOfMesh / max_size_of_vertex_mesh;
-    const double absolute_gap = mProportionalGapBetweenElements * mMaxWidthOrHeightOfMesh / std::max(mNumElementsX, mNumElementsY);
-
-    // Determine the gap needed in order to centre the scaled IB mesh within the bounding box [0,1]x[0,1]
-    const double left_gap = 0.5 * (1.0 - (vertex_mesh_width * scale_factor));
-    const double bottom_gap = 0.5 * (1.0 - (vertex_mesh_height * scale_factor));
-
-    // The displacement which, when added to the scaled node locations, will centre the new IB mesh in [0,1]x[0,1]
-    const auto displacement = Create_c_vector(left_gap - bounding_box.rGetLowerCorner()[0] * scale_factor,
-                                              bottom_gap - bounding_box.rGetLowerCorner()[1] * scale_factor);
 
     // Containers in which to store the new nodes and elements
     std::vector<Node<2>*> new_nodes;
@@ -160,71 +158,127 @@ void VoronoiImmersedBoundaryMeshGenerator::GenerateImmersedBoundaryMesh()
     for (unsigned elem_idx = 0; elem_idx < mpVertexMesh->GetNumElements(); ++elem_idx)
     {
         VertexElement<2, 2>* const p_vertex_elem = mpVertexMesh->GetElement(elem_idx);
-        const unsigned num_nodes_elem = p_vertex_elem->GetNumNodes();
 
-        // Calculate the scaled locations (not taking into account shrinking to provide a gap between elements)
-        std::vector<c_vector<double, 2>> scaled_locations;
-        scaled_locations.reserve(num_nodes_elem + 1);
-        for (unsigned node_local_idx = 0; node_local_idx < num_nodes_elem; ++node_local_idx)
+        // Get the original locations of nodes in the current element
+        std::vector<c_vector<double, 2>> vertex_locations;
+        for (unsigned local_idx = 0; local_idx < p_vertex_elem->GetNumNodes(); ++local_idx)
         {
-            scaled_locations.emplace_back(displacement + scale_factor * p_vertex_elem->GetNode(node_local_idx)->rGetLocation());
+            vertex_locations.emplace_back(p_vertex_elem->GetNode(local_idx)->rGetLocation());
         }
 
-        const c_vector<double, 2> zero_vec = zero_vector<double>(2);
-        const c_vector<double, 2> centre_of_mass = std::accumulate(scaled_locations.begin(),
-                                                                   scaled_locations.end(),
-                                                                   zero_vec) / scaled_locations.size();
-
-        // Rescale the locations towards the centre of mass, to leave the required gap between elements
-        for (auto& location : scaled_locations)
+        // Determine the shortest length edge to get a sensible number of steps for performing the reduction
+        double shortest_edge_length = DBL_MAX;
+        for (unsigned local_idx = 0; local_idx < vertex_locations.size(); ++local_idx)
         {
-            const double vec_length = norm_2(location - centre_of_mass);
-            location = centre_of_mass + (1.0 - absolute_gap / vec_length) * (location - centre_of_mass);
+            const unsigned next_idx = AdvanceMod(local_idx, 1, vertex_locations.size());
+            const double edge_length = norm_2(vertex_locations[next_idx] - vertex_locations[local_idx]);
+
+            if (edge_length < shortest_edge_length)
+            {
+                shortest_edge_length = edge_length;
+            }
         }
 
-        // Put the first point back in at the end, to form a closed loop
-        scaled_locations.resize(scaled_locations.size() + 1);
-        scaled_locations.back() = scaled_locations.front();
+        // Proceed with repositioning in small increments so as not to run in to problems of multiple intersections.
+        // We want to move no more than half the shortest edge length in any given step.
+        const auto num_steps = std::lround(std::max(1.0, 2.0 * mAbsoluteGapBetweenElements / shortest_edge_length));
+        const double step_dist = mAbsoluteGapBetweenElements / num_steps;
 
-        // Get the partial sum of perimeter elements, needed for parametric spline points
-        std::vector<double> partial_perimeter_sum(scaled_locations.size(), 0.0);
-        for (unsigned i = 1; i < scaled_locations.size(); ++i)
+        for (unsigned step = 0; step < num_steps; ++step)
         {
-            partial_perimeter_sum[i] = partial_perimeter_sum[i-1] + norm_2(scaled_locations[i] - scaled_locations[i-1]);
+            for (unsigned node_local_idx = 0; node_local_idx < vertex_locations.size(); ++node_local_idx)
+            {
+                const unsigned next_idx = AdvanceMod(node_local_idx, 1, vertex_locations.size());
+                const unsigned prev_idx = AdvanceMod(node_local_idx, -1, vertex_locations.size());
+
+                const c_vector<double, 2>& this_pos = vertex_locations[node_local_idx];
+                const c_vector<double, 2>& next_pos = vertex_locations[next_idx];
+                const c_vector<double, 2>& prev_pos = vertex_locations[prev_idx];
+
+                // We need to bisect the angle that this node makes with the previous and the next, and walk the node in
+                // along the line of bisection
+                const c_vector<double, 2> unit_vec_to_next = (next_pos - this_pos) / norm_2(next_pos - this_pos);
+                const c_vector<double, 2> unit_vec_to_prev = (prev_pos - this_pos) / norm_2(prev_pos - this_pos);
+                const c_vector<double, 2> unit_bisecting_vec = 0.5 * (unit_vec_to_next + unit_vec_to_prev);
+
+                const double angle_of_bisection = std::acos(inner_prod(unit_bisecting_vec, unit_vec_to_prev));
+                const double length = step_dist / std::sin(angle_of_bisection);
+
+                vertex_locations[node_local_idx] = this_pos + length * unit_bisecting_vec;
+            }
+
+            // Now check for intersections caused by small edges becoming inverted due to movement
+            using geom_point = boost::geometry::model::point<double, 2, boost::geometry::cs::cartesian>;
+            using geom_segment = boost::geometry::model::segment<geom_point>;
+
+            std::vector<geom_segment> line_segments;
+            line_segments.reserve(vertex_locations.size());
+
+            for (unsigned idx = 0; idx < vertex_locations.size(); ++idx)
+            {
+                const c_vector<double, 2>& this_pos = vertex_locations[idx];
+                const c_vector<double, 2>& next_pos = vertex_locations[AdvanceMod(idx, 1, vertex_locations.size())];
+
+                line_segments.emplace_back(geom_point(this_pos[0], this_pos[1]),
+                                           geom_point(next_pos[0], next_pos[1]));
+            }
+
+            bool intersections_this_elem = false;
+            for (unsigned segment = 0; segment < line_segments.size(); ++segment)
+            {
+                unsigned next_next = AdvanceMod(segment, 2, line_segments.size());
+
+                if (boost::geometry::intersects(line_segments[segment], line_segments[next_next]))
+                {
+                    intersections_this_elem = true;
+
+                    std::vector<geom_point> intersection;
+                    boost::geometry::intersection(line_segments[segment], line_segments[next_next], intersection);
+                    assert(intersection.size() == 1);
+
+                    // Intersection between segment i and i+2, so segment i+1 needs merging.
+                    // Segment i+1 has scaled_location[i+1] & scaled_location[i+2]
+                    const unsigned start_idx = AdvanceMod(segment, 1, line_segments.size());
+                    const unsigned end_idx = AdvanceMod(segment, 2, line_segments.size());
+
+
+                    const c_vector<double, 2> merged_location = Create_c_vector(intersection[0].get<0>(),
+                                                                                intersection[0].get<1>());
+                    vertex_locations[start_idx] = merged_location;
+                    vertex_locations[end_idx] = merged_location;
+                }
+            }
+
+            // Clear out the vertex_locations vector of duplicate values
+            if (intersections_this_elem)
+            {
+                // Erase all but the first consecutive identical element
+                auto last = std::unique(vertex_locations.begin(), vertex_locations.end(),
+                                        [](const c_vector<double, 2>& a, const c_vector<double, 2>& b)
+                                        {
+                                            return a[0] == b[0] && a[1] == b[1];
+                                        });
+                vertex_locations.erase(last, vertex_locations.end());
+            }
         }
 
-        // Create splines for the interpolation
-        auto x_spline = vtkSmartPointer<vtkKochanekSpline>::New();
-        x_spline->SetDefaultTension(1.0);
-        x_spline->SetDefaultContinuity(-1.0);
-        x_spline->SetDefaultBias(0.0);
-        x_spline->SetClosed(true);
-
-        auto y_spline = vtkSmartPointer<vtkKochanekSpline>::New();
-        y_spline->SetDefaultTension(1.0);
-        y_spline->SetDefaultContinuity(-1.0);
-        y_spline->SetDefaultBias(0.0);
-        y_spline->SetClosed(true);
-
-        // Add correctly scaled and located points to the splines
-        for (unsigned i = 0; i < scaled_locations.size(); ++i)
-        {
-            x_spline->AddPoint(partial_perimeter_sum[i], scaled_locations[i][0]);
-            y_spline->AddPoint(partial_perimeter_sum[i], scaled_locations[i][1]);
-        }
-
-        // Calculate the required number of nodes for this element, and their spacing to provide a uniform distribution
-        const double& perimeter = partial_perimeter_sum.back();
+        // Calculate the IB node locations by evenly spacing along the path defined by the vertex locations
+        const bool closed_path = true;
+        const bool permute_path = true;  // permute the path to remove any bias from consistent starting location
         const double ideal_node_spacing = mTargetNodeSpacingRatio / mNumFluidGridPoints;
-        const unsigned num_ib_nodes = std::ceil(perimeter / ideal_node_spacing);
-        const double actual_spacing = perimeter / num_ib_nodes;
+        std::vector<c_vector<double, 2>> ib_node_locations = EvenlySpaceAlongPath(vertex_locations,
+                                                                                  closed_path,
+                                                                                  permute_path,
+                                                                                  0u,
+                                                                                  ideal_node_spacing);
+
 
         // Evaluate the splines at equally-spaced points to create new nodes for the IB mesh at required locations
         std::vector<Node<2>*> nodes_this_elem;
-        for (unsigned i = 0; i < num_ib_nodes; ++i)
+        nodes_this_elem.reserve(ib_node_locations.size());
+        for (const auto& location : ib_node_locations)
         {
-            const double t = actual_spacing * i;
-            new_nodes.emplace_back(new Node<2>(new_nodes.size(), true, x_spline->Evaluate(t), y_spline->Evaluate(t)));
+            new_nodes.emplace_back(new Node<2>(new_nodes.size(), location, true));
             nodes_this_elem.emplace_back(new_nodes.back());
         }
 
@@ -233,17 +287,20 @@ void VoronoiImmersedBoundaryMeshGenerator::GenerateImmersedBoundaryMesh()
         new_elems.back()->SetIsBoundaryElement(p_vertex_elem->IsElementOnBoundary());
     }
 
-    mpIbMesh = new ImmersedBoundaryMesh<2, 2>(new_nodes, new_elems, {}, mNumFluidGridPoints, mNumFluidGridPoints);
+    // No use case yet for laminas in this type of simulation
+    std::vector<ImmersedBoundaryElement<1,2>*> empty_laminas_vec{};
+
+    mpIbMesh = our::make_unique<ImmersedBoundaryMesh<2, 2>>(new_nodes, new_elems, empty_laminas_vec, mNumFluidGridPoints, mNumFluidGridPoints);
 }
 
 ImmersedBoundaryMesh<2,2>* VoronoiImmersedBoundaryMeshGenerator::GetMesh()
 {
-    return mpIbMesh;
+    return mpIbMesh.get();
 }
 
 MutableVertexMesh<2,2>* VoronoiImmersedBoundaryMeshGenerator::GetMutableVertexMesh()
 {
-    return mpVertexMesh;
+    return mpVertexMesh.get();
 }
 
 std::array<unsigned, 13> VoronoiImmersedBoundaryMeshGenerator::GetVertexMeshPolygonDistribution()
