@@ -155,6 +155,20 @@ void VoronoiImmersedBoundaryMeshGenerator::GenerateImmersedBoundaryMesh()
     std::vector<Node<2>*> new_nodes;
     std::vector<ImmersedBoundaryElement<2,2>*> new_elems;
 
+    // Reposition a c_vector to lie within the unit square
+    auto RepositionToUnitSquare = [](const c_vector<double, 2>& a)->c_vector<double, 2>
+    {
+        double x = a[0];
+        double y = a[1];
+
+        while(x < 0.0){x += 1.0;}
+        while(x >= 1.0){x -= 1.0;}
+        while(y < 0.0){y += 1.0;}
+        while(y >= 1.0){y -= 1.0;}
+
+        return Create_c_vector(x, y);
+    };
+
     for (unsigned elem_idx = 0; elem_idx < mpVertexMesh->GetNumElements(); ++elem_idx)
     {
         VertexElement<2, 2>* const p_vertex_elem = mpVertexMesh->GetElement(elem_idx);
@@ -278,7 +292,7 @@ void VoronoiImmersedBoundaryMeshGenerator::GenerateImmersedBoundaryMesh()
         nodes_this_elem.reserve(ib_node_locations.size());
         for (const auto& location : ib_node_locations)
         {
-            new_nodes.emplace_back(new Node<2>(new_nodes.size(), location, true));
+            new_nodes.emplace_back(new Node<2>(new_nodes.size(), RepositionToUnitSquare(location), true));
             nodes_this_elem.emplace_back(new_nodes.back());
         }
 
@@ -291,6 +305,25 @@ void VoronoiImmersedBoundaryMeshGenerator::GenerateImmersedBoundaryMesh()
     std::vector<ImmersedBoundaryElement<1,2>*> empty_laminas_vec{};
 
     mpIbMesh = our::make_unique<ImmersedBoundaryMesh<2, 2>>(new_nodes, new_elems, empty_laminas_vec, mNumFluidGridPoints, mNumFluidGridPoints);
+
+    // Replace the default balancing fluid sources with a source at each vertex
+    auto& r_balancing_sources = mpIbMesh->rGetBalancingFluidSources();
+
+    for (auto& source : r_balancing_sources)
+    {
+        delete(source);
+    }
+    r_balancing_sources.clear();
+
+    r_balancing_sources.reserve(mpVertexMesh->GetNumNodes());
+    for (unsigned node_idx = 0; node_idx < mpVertexMesh->GetNumNodes(); ++node_idx)
+    {
+        const auto idx = r_balancing_sources.size();
+        const auto location = mpVertexMesh->GetNode(node_idx)->rGetLocation();
+
+        r_balancing_sources.emplace_back(new FluidSource<2>(idx, RepositionToUnitSquare(location)));
+        r_balancing_sources.back()->SetStrength(0.0);
+    }
 }
 
 ImmersedBoundaryMesh<2,2>* VoronoiImmersedBoundaryMeshGenerator::GetMesh()
