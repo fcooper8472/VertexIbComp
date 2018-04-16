@@ -57,7 +57,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "FakePetscSetup.hpp"
 
 
-class TestPolygonDistributionRobustness : public CxxTest::TestSuite
+class TestGenerateRandomFieldFigs : public CxxTest::TestSuite
 {
 private:
 
@@ -91,7 +91,7 @@ private:
         OutputFileHandler results_handler(dir_name, false);
         out_stream results_file = results_handler.OpenOutputFile(file_name);
 
-        const unsigned num_fields_to_sample = 500u;
+        const unsigned num_fields_to_sample = 1000u;
         for (unsigned field_num = 0; field_num < num_fields_to_sample; ++field_num)
         {
             const std::vector<double> field = gen.SampleRandomField();
@@ -241,37 +241,37 @@ public:
         {
             for (const auto& trace_prop : {0.5, 0.8, 0.95})
             {
-                GenerateAndSampleFromRandomField(nodes[0], domain_size, length_scale, trace_prop);
+                GenerateAndSampleFromRandomField(nodes_vec_vec[0], domain_size, length_scale, trace_prop);
             }
         }
-
-        /*
-         * Generate the visualisations of the random fields
-         */
-        for (const auto& length_scale : {0.5, 0.1, 0.01})
-        {
-            GenerateAndVisualiseRandomField(nodes[0], domain_size, length_scale);
-        }
-
-        /*
-         * Calculate the dependence on trace proportion of the number of eigenvalues
-         */
-        std::vector<double> proportions_of_trace;
-        for (unsigned trace_proportion = 0; trace_proportion < 20u; ++trace_proportion)
-        {
-            proportions_of_trace.emplace_back(0.98 - 0.02 * trace_proportion);
-        }
-
-        std::vector<double> length_scales;
-        for (unsigned length_scale = 0; length_scale < 9u; ++length_scale)
-        {
-            length_scales.emplace_back(0.01 + 0.01 * length_scale);
-        }
-
-        for (const auto& length_scale : length_scales)
-        {
-            CalculateNumEigenvalsAfterTuning(nodes_vec_vec, domain_size, length_scale, proportions_of_trace);
-        }
+//
+//        /*
+//         * Generate the visualisations of the random fields
+//         */
+//        for (const auto& length_scale : {0.5, 0.1, 0.01})
+//        {
+//            GenerateAndVisualiseRandomField(nodes_vec_vec[0], domain_size, length_scale);
+//        }
+//
+//        /*
+//         * Calculate the dependence on trace proportion of the number of eigenvalues
+//         */
+//        std::vector<double> proportions_of_trace;
+//        for (unsigned trace_proportion = 0; trace_proportion < 20u; ++trace_proportion)
+//        {
+//            proportions_of_trace.emplace_back(0.98 - 0.02 * trace_proportion);
+//        }
+//
+//        std::vector<double> length_scales;
+//        for (unsigned length_scale = 0; length_scale < 9u; ++length_scale)
+//        {
+//            length_scales.emplace_back(0.01 + 0.01 * length_scale);
+//        }
+//
+//        for (const auto& length_scale : length_scales)
+//        {
+//            CalculateNumEigenvalsAfterTuning(nodes_vec_vec, domain_size, length_scale, proportions_of_trace);
+//        }
 
         for (const auto& nodes_vec : nodes_vec_vec)
         {

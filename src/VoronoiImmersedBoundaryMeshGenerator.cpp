@@ -66,7 +66,7 @@ VoronoiImmersedBoundaryMeshGenerator::VoronoiImmersedBoundaryMeshGenerator(unsig
           mTargetNodeSpacingRatio(targetNodeSpacingRatio)
 {
     assert(maxWidthOrHeightOfMesh > 0.0);
-    assert(maxWidthOrHeightOfMesh < 1.0);
+    assert(maxWidthOrHeightOfMesh <= 1.0);
 
     assert(absoluteGapBetweenElements > 0.0);
     assert(absoluteGapBetweenElements < 1.0);

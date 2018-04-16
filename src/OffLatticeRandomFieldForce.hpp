@@ -6,7 +6,7 @@
 
 #include "AbstractForce.hpp"
 #include "AbstractCellPopulation.hpp"
-#include "OffLatticeRandomFieldGenerator.hpp"
+#include "UniformGridRandomFieldGenerator.hpp"
 
 /**
  * A force class to model random cell movement, making use of Gaussian Random Fields.
@@ -20,7 +20,7 @@ private:
     double mDiffusionStrength;
 
     /** An owning pointer to the random field generator that creates appropriate correlation between nodes */
-    std::unique_ptr<OffLatticeRandomFieldGenerator<SPACE_DIM>> mpRandomFieldGenerator;
+    std::unique_ptr<UniformGridRandomFieldGenerator<DIM>> mpRandomFieldGenerator;
 
     /** Archiving */
     friend class boost::serialization::access;
@@ -48,17 +48,11 @@ public:
     ~OffLatticeRandomFieldForce() = default;
 
     /**
-     * Set up the random field generator, using the current nodes as a template.
+     * Set up the random field generator, from a cached field.
      *
-     * @param rNodes the nodes in the mesh
-     * @param lengthScale the length scale for spatial correlation in the random field
-     * @param domainGrowthProportion best guess of what proportion larger the mesh will eventually reach
-     * @param traceProportion how well the random numbers will be distributed. Defaults to 0.95.
+     * @param cachedFieldName the filename of a cached random field, relative to $CHASTE_TEST_OUTPUT
      */
-    void SetUpRandomFieldGenerator(const std::vector<Node<DIM>*>& rNodes,
-                                   const double lengthScale,
-                                   const double domainGrowthProportion,
-                                   const double traceProportion=0.95);
+    void SetUpRandomFieldGenerator(const std::string cachedFieldName);
 
     /**
      * Overridden AddForceContribution() method.
@@ -67,7 +61,11 @@ public:
      */
     void AddForceContribution(AbstractCellPopulation<DIM>& rCellPopulation);
 
-    
+    /** @return mDiffusionStrength */
+    double GetDiffusionStrength() const;
+
+    /** @paramm diffusionStrength the new value of mDiffusionStrength */
+    void SetDiffusionStrength(double diffusionStrength);
 
     /**
      * Overridden OutputForceParameters() method.

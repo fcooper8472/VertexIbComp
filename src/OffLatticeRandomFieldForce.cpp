@@ -1,46 +1,26 @@
 #include "OffLatticeRandomFieldForce.hpp"
 
+#include <algorithm>
+
+#include "ChasteMakeUnique.hpp"
+
+#include "RandomNumberGenerator.hpp"
+#include "SimulationTime.hpp"
+
+
 template<unsigned DIM>
 OffLatticeRandomFieldForce<DIM>::OffLatticeRandomFieldForce()
     : AbstractForce<DIM>(),
-      mMovementParameter(0.01)
+      mDiffusionStrength(0.01)
 {
 }
 
 template <unsigned DIM>
-void OffLatticeRandomFieldForce<DIM>::SetUpRandomFieldGenerator(const std::vector<Node<DIM>*>& rNodes,
-                                                                const double lengthScale,
-                                                                const double traceProportion,
-                                                                const double domainGrowthProportion)
+void OffLatticeRandomFieldForce<DIM>::SetUpRandomFieldGenerator(const std::string cachedFieldName)
 {
-    std::array<double, DIM> lower_corner;
-    std::array<double, DIM> upper_corner;
-
-    for (unsigned dim = 0; dim < DIM; ++dim)
-    {
-        auto compare_dim = [&](Node<DIM>* a, Node<DIM>* b){return a->rGetLocation()[dim] < b->rGetLocation()[dim];};
-        auto min_max = std::minmax_element(rNodes.begin(), rNodes.end(), compare_dim);
-
-        const double lower = min_max.first->rGetLocation[dim];
-        const double upper = min_max.second->rGetLocation[dim];
-        const double extra_each_end = 0.5 * (domainGrowthProportion - 1.0) * (upper - lower);
-
-        lower_corner[dim] = lower - extra_each_end;
-        upper_corner[dim] = upper + extra_each_end;
-    }
-
-    // We assume there is no periodicity, for now
-    std::array<bool, DIM> periodicity;
-    periodicity.fill(false);
-
-    mpRandomFieldGenerator = our::make_unique<OffLatticeRandomFieldGenerator<DIM>(
-            lower_corner, upper_corner, periodicity, 1u, lengthScale
-    );
-
-    mpRandomFieldGenerator->TuneNumEigenvals(rNodes, traceProportion);
+    mpRandomFieldGenerator = our::make_unique<UniformGridRandomFieldGenerator<DIM>>(cachedFieldName);
 }
-
-
+#include "Debug.hpp"
 template<unsigned DIM>
 void OffLatticeRandomFieldForce<DIM>::AddForceContribution(AbstractCellPopulation<DIM>& rCellPopulation)
 {
@@ -49,40 +29,59 @@ void OffLatticeRandomFieldForce<DIM>::AddForceContribution(AbstractCellPopulatio
         EXCEPTION("You must set up the random field generator: call SetUpRandomFieldGenerator()");
     }
 
-    double dt = SimulationTime::Instance()->GetTimeStep();
+    const auto& r_nodes_vec = rCellPopulation.rGetMesh().rGetNodes();
 
-    // Iterate over the nodes
-    for (typename AbstractMesh<DIM, DIM>::NodeIterator node_iter = rCellPopulation.rGetMesh().GetNodeIteratorBegin();
-         node_iter != rCellPopulation.rGetMesh().GetNodeIteratorEnd();
-         ++node_iter)
+    Timer t;
+    t.Reset();
+
+    // We need to sample a random field for each dimension
+    std::vector<std::vector<double>> random_fields(DIM);
+    std::generate(random_fields.begin(), random_fields.end(), [&](){return mpRandomFieldGenerator->SampleRandomField();});
+
+    const double time_generate = t.GetElapsedTime();
+    t.Reset();
+
+    // The multiplicative pre-factor applied to each element from the random field
+    const double force_scale_factor = std::sqrt(2.0 * mDiffusionStrength / SimulationTime::Instance()->GetTimeStep());
+
+    for (auto& p_node : r_nodes_vec)
     {
-                c_vector<double, DIM> force_contribution;
-        for (unsigned i=0; i<DIM; i++)
+        c_vector<double, DIM> force;
+        for (unsigned dim = 0; dim < DIM; ++dim)
         {
-            /*
-             * The force on this cell is scaled with the timestep such that when it is
-             * used in the discretised equation of motion for the cell, we obtain the
-             * correct formula
-             *
-             * x_new = x_old + sqrt(2*D*dt)*W
-             *
-             * where W is a standard normal random variable.
-             */
-            double xi = RandomNumberGenerator::Instance()->StandardNormalRandomDeviate();
-
-            force_contribution[i] = (sqrt(2.0*mMovementParameter*dt)/dt)*xi;
+            force[dim] = mpRandomFieldGenerator->Interpolate(random_fields[dim], p_node->rGetLocation());
         }
-        node_iter->AddAppliedForceContribution(force_contribution);
+
+        p_node->AddAppliedForceContribution(force_scale_factor * force);
     }
+
+    const double time_interpolate = t.GetElapsedTime();
+
+    const double pct_generate = 100.0 * time_generate / (time_generate + time_interpolate);
+    const double pct_interpolate = 100.0 * time_interpolate / (time_generate + time_interpolate);
+
+    PRINT_2_VARIABLES(pct_generate, pct_interpolate);
 }
 
 template<unsigned DIM>
 void OffLatticeRandomFieldForce<DIM>::OutputForceParameters(out_stream& rParamsFile)
 {
-    *rParamsFile << "\t\t\t<MovementParameter>" << mMovementParameter << "</MovementParameter> \n";
+    *rParamsFile << "\t\t\t<DiffusionStrength>" << mDiffusionStrength << "</DiffusionStrength> \n";
 
     // Call direct parent class
     AbstractForce<DIM>::OutputForceParameters(rParamsFile);
+}
+
+template<unsigned int DIM>
+double OffLatticeRandomFieldForce<DIM>::GetDiffusionStrength() const
+{
+    return mDiffusionStrength;
+}
+
+template<unsigned int DIM>
+void OffLatticeRandomFieldForce<DIM>::SetDiffusionStrength(double diffusionStrength)
+{
+    mDiffusionStrength = diffusionStrength;
 }
 
 /////////////////////////////////////////////////////////////////////////////
