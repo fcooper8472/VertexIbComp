@@ -59,7 +59,7 @@ public:
 
 
 
-    void TestHoneycombSims() throw(Exception)
+    void TestHoneycombSims()
     {
         for (unsigned sim = 0; sim < mNumSims; ++sim)
         {
@@ -75,7 +75,7 @@ public:
         }
     }
 
-    void TestVoronoiSims() throw(Exception)
+    void TestVoronoiSims()
     {
         for (unsigned sim = 0; sim < mNumSims; ++sim)
         {

@@ -60,13 +60,11 @@ private:
 
     void RandomlyLabelCells(std::list<CellPtr>& rCells, boost::shared_ptr<AbstractCellProperty> pLabel, double labelledRatio)
     {
-        for (std::list<CellPtr>::iterator cell_iter = rCells.begin();
-             cell_iter != rCells.end();
-             ++cell_iter)
+        for (const auto& p_cell : rCells)
         {
             if (RandomNumberGenerator::Instance()->ranf() < labelledRatio)
             {
-               (*cell_iter)->AddCellProperty(pLabel);
+               p_cell->AddCellProperty(pLabel);
             }
         }
     }
@@ -199,7 +197,7 @@ MARK;
      * Simulate a population of cells exhibiting cell sorting using the
      * Immersed Boundary method.
      */
-    void TestIbMonolayerCellSorting()// throw(Exception)
+    void TestIbMonolayerCellSorting()
     {
         // Create a simple 2D Immersed Boundary mesh
         const double dist_between_cells = 0.02;
@@ -352,7 +350,7 @@ MARK;
 //        PRINT_VARIABLE(GetAverageVolumeOfElement() / vol_at_start);
 //
 //        // Check that the same number of cells
-//        TS_ASSERT_EQUALS(simulator.rGetCellPopulation().GetNumRealCells(), M_NUM_CELLS_ACROSS*M_NUM_CELLS_ACROSS);
+//        TS_ASSERT_EQUALS(simulator.rGetCellPopulation().GetNumRealCells(), m_num_cells_across*m_num_cells_across);
 //
 //        // Test no births or deaths
 //        TS_ASSERT_EQUALS(simulator.GetNumBirths(), 0u);

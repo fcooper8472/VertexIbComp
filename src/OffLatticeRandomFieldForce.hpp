@@ -22,6 +22,18 @@ private:
     /** An owning pointer to the random field generator that creates appropriate correlation between nodes */
     std::unique_ptr<UniformGridRandomFieldGenerator<DIM>> mpRandomFieldGenerator;
 
+    /**
+     * Helper method for AddForceContribution.  Add uncorrelated noise in the case of no random field.
+     * @param rCellPopulation the cell population to add noise to
+     */
+    void AddUncorrelatedForce(AbstractCellPopulation<DIM>& rCellPopulation) const noexcept;
+
+    /**
+     * Helper method for AddForceContribution.  Add correlated noise sampled from the random field.
+     * @param rCellPopulation the cell population to add noise to
+     */
+    void AddCorrelatedForce(AbstractCellPopulation<DIM>& rCellPopulation) const noexcept;
+
     /** Archiving */
     friend class boost::serialization::access;
 

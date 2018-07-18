@@ -56,7 +56,7 @@ public:
 
     const unsigned mNumSims = 50u;
 
-    void TestGenerateVoronoiMesh() throw(Exception)
+    void TestGenerateVoronoiMesh()
     {
         VoronoiVertexMeshGenerator generator(4, 4, 100, 1.0 / 16.0);
         MutableVertexMesh<2,2>* p_mesh = generator.GetMesh();
