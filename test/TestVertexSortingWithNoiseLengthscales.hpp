@@ -278,7 +278,7 @@ public:
     /**
      * == Zero lengthscale, variable diffusion strength, paper rearrangement threshold ==
      */
-    void TestDiffusionStrengthPaperThreshold()
+    void xTestDiffusionStrengthPaperThreshold()
     {
         const unsigned num_reruns = 20u;
         const double rearrangement_threshold = 0.1;
@@ -292,6 +292,28 @@ public:
                 sim_name << "VertexIbComp/CellSorting/DiffStrPaper/" << diff_str << "/" << i;
 
                 RunSimulation(sim_name.str(), 0.0, diff_str, rearrangement_threshold);
+            }
+        }
+    }
+
+    /**
+     * == Varying lengthscale, fixed diffusion strength, paper rearrangement threshold ==
+     */
+    void TestDiffusionLengthscale()
+    {
+        const unsigned num_reruns = 5u;
+        const double rearrangement_threshold = 0.05;
+        const double diff_str = 1.0;
+
+        for (const auto& lengthscale : Range(0.0, 2.0, 0.4))
+        {
+            for (unsigned i = 0; i < num_reruns; ++i)
+            {
+                std::stringstream sim_name;
+                sim_name << std::setprecision(1) << std::fixed;
+                sim_name << "VertexIbComp/CellSorting/DiffLengthscaleVM/" << lengthscale << "/" << i;
+
+                RunSimulation(sim_name.str(), lengthscale, diff_str, rearrangement_threshold);
             }
         }
     }

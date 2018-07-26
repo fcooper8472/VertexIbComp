@@ -3,6 +3,7 @@ TestGenerateRandomFieldFigs.hpp
 TestGenerateVoronoiFigure.hpp
 TestHoneycombSimulation.hpp
 TestIbNodeVoronoiFigure.hpp
+TestIbSortingWithNoiseLengthscales.hpp
 TestPolygonDistributionRobustness.hpp
 TestVertexSortingWithNoiseLengthscales.hpp
 TestVoronoiVsHoneycombMeshGen.hpp
