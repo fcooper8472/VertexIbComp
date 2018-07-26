@@ -246,7 +246,7 @@ public:
         const unsigned num_reruns = 5u;
         const double diff_str = 5.0 * 1e8;
 
-        for (const auto& lengthscale : Range(0.03, 0.07, 0.02))//{0.01, 0.03, 0.05, 0.07, 0.09})
+        for (const auto& lengthscale : Range(0.01, 0.07, 0.02))//{0.01, 0.03, 0.05, 0.07, 0.09})
         {
             for (unsigned rerun = 0; rerun < num_reruns; ++rerun)
             {
