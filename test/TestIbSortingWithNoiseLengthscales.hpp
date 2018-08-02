@@ -99,14 +99,14 @@ private:
      * @param outputDir the output directory for this simulation
      * @param lengthscale the lengthscale for the random field
      * @param diffusionStrength the strength of the random force added to the simulation
-     * @param rearrangementThreshold the cell rearrangement threshold (default 0.01)
+     * @param cellGap the absolute gap between cells
      */
-    void RunSimulation(const std::string outputDir, const double lengthscale, const double diffusionStrength)
+    void RunSimulation(const std::string outputDir, const double lengthscale, const double diffusionStrength, const double cellGap=0.03)
     {
         SetupSingletons();
 
         // Create a simple 2D Immersed Boundary mesh
-        const double dist_between_cells = 0.03;
+        const double dist_between_cells = cellGap;
         const double interaction_dist_multiple = 2.0;
 
         VoronoiImmersedBoundaryMeshGenerator generator(m_num_cells_across, m_num_cells_across, 20u, 128u, 1.0, dist_between_cells, 0.5);
@@ -177,7 +177,7 @@ private:
         const double basic_strength = 1.2 * 1e5;
         auto p_cell_cell_force = boost::make_shared<ImmersedBoundaryMorseDifferentialAdhesionForce<2>>();
         p_main_modifier->AddImmersedBoundaryForce(p_cell_cell_force);
-        p_cell_cell_force->SetRepulsionWellDepth(100.0 * basic_strength);
+        p_cell_cell_force->SetRepulsionWellDepth(10.0 * basic_strength);
         p_cell_cell_force->SetAdhesionAtoAWellDepth(basic_strength);
         p_cell_cell_force->SetAdhesionAtoBWellDepth(0.25 * basic_strength);
         p_cell_cell_force->SetAdhesionBtoBWellDepth(basic_strength);
@@ -186,7 +186,7 @@ private:
         simulator.SetOutputDirectory(outputDir);
 
         // Set time step and end time for simulation
-        simulator.SetDt(1.0/30.0);
+        simulator.SetDt(1.0/25.0);
         simulator.SetSamplingTimestepMultiple(UINT_MAX);
         simulator.SetEndTime(m_time_to_steady_state);
 
@@ -198,7 +198,7 @@ private:
         RandomlyLabelCells(simulator.rGetCellPopulation().rGetCells(), p_state, 0.5);
 
         // Run simulation
-        simulator.SetSamplingTimestepMultiple(60u);
+        simulator.SetSamplingTimestepMultiple(50u);
         simulator.SetEndTime(m_time_to_steady_state + m_time_for_simulation);
 
         // Set the progress reporter
@@ -237,11 +237,73 @@ private:
 
 public:
 
+    /**
+     * == Single snapshot image of sorting ==
+     */
+    void xTestSingleSnapshot()
+    {
+        const double diff_str = 1e9;
+
+        std::stringstream sim_name;
+        sim_name << "VertexIbComp/CellSorting/IbSingleSnapshot/";
+
+        // Note it may be necessary to lengthen the simulation runtime to get better total sorting
+        RunSimulation(sim_name.str(), 0.03, diff_str);
+    }
+
 
     /**
-     * == Varying lengthscale, fixed diffusion strength, paper rearrangement threshold ==
+     * == Fixed lengthscale, variable diffusion strength ==
      */
-    void TestDiffusionLengthscale() throw(Exception)
+    void xTestDiffusionStrength()
+    {
+        const unsigned num_reruns = 1u;
+        const double lengthscale = 0.03;
+        const double basic_diff_str = 1e9;
+
+        for (const auto& diff_str : {1.0})
+        {
+            for (unsigned rerun = 0; rerun < num_reruns; ++rerun)
+            {
+                PRINT_3_VARIABLES(lengthscale, rerun, diff_str);
+                std::stringstream sim_name;
+                sim_name << std::setprecision(4) << std::fixed;
+                sim_name << "VertexIbComp/CellSorting/DiffStrIb/" << diff_str << "/" << rerun;
+
+                RunSimulation(sim_name.str(), lengthscale, basic_diff_str * diff_str);
+            }
+        }
+    }
+
+
+    /**
+     * == Fixed lengthscale, variable diffusion strength ==
+     */
+    void TestCellGap()
+    {
+        const unsigned num_reruns = 5u;
+        const double lengthscale = 0.03;
+        const double basic_diff_str = 5.0 * 1e8;
+
+        for (const auto& cell_gap : {0.01, 0.03, 0.05})
+        {
+            for (unsigned rerun = 0; rerun < num_reruns; ++rerun)
+            {
+                PRINT_3_VARIABLES(lengthscale, rerun, cell_gap);
+                std::stringstream sim_name;
+                sim_name << std::setprecision(4) << std::fixed;
+                sim_name << "VertexIbComp/CellSorting/DiffCellGapIb/" << cell_gap << "/" << rerun;
+
+                RunSimulation(sim_name.str(), lengthscale, basic_diff_str, cell_gap);
+            }
+        }
+    }
+
+
+    /**
+     * == Varying lengthscale, fixed diffusion strength ==
+     */
+    void xTestDiffusionLengthscale()
     {
         const unsigned num_reruns = 10u;
         const double diff_str = 5.0 * 1e8;
