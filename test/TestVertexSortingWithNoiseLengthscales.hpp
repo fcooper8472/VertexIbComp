@@ -255,6 +255,20 @@ private:
 public:
 
     /**
+     * == Single snapshot image of sorting ==
+     */
+    void xTestSingleSnapshot()
+    {
+        const double rearrangement_threshold = 0.1;
+
+        std::stringstream sim_name;
+        sim_name << "VertexIbComp/CellSorting/VertexSingleSnapshot/";
+
+        // Note it may be necessary to lengthen the simulation runtime to get better total sorting
+        RunSimulation(sim_name.str(), 0.0, 0.5, rearrangement_threshold);
+    }
+
+    /**
      * == Zero lengthscale, variable diffusion strength, default rearrangement threshold ==
      */
     void xTestDiffusionStrengthDefaultThreshold()
@@ -299,7 +313,7 @@ public:
     /**
      * == Varying lengthscale, fixed diffusion strength, paper rearrangement threshold ==
      */
-    void TestDiffusionLengthscale()
+    void xTestDiffusionLengthscale()
     {
         const unsigned num_reruns = 5u;
         const double rearrangement_threshold = 0.05;
