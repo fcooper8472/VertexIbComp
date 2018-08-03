@@ -186,7 +186,7 @@ private:
         simulator.SetOutputDirectory(outputDir);
 
         // Set time step and end time for simulation
-        simulator.SetDt(1.0/25.0);
+        simulator.SetDt(1.0/30.0);
         simulator.SetSamplingTimestepMultiple(UINT_MAX);
         simulator.SetEndTime(m_time_to_steady_state);
 
@@ -198,7 +198,7 @@ private:
         RandomlyLabelCells(simulator.rGetCellPopulation().rGetCells(), p_state, 0.5);
 
         // Run simulation
-        simulator.SetSamplingTimestepMultiple(50u);
+        simulator.SetSamplingTimestepMultiple(125u);
         simulator.SetEndTime(m_time_to_steady_state + m_time_for_simulation);
 
         // Set the progress reporter
@@ -279,7 +279,7 @@ public:
     /**
      * == Fixed lengthscale, variable diffusion strength ==
      */
-    void TestCellGap()
+    void xTestCellGap()
     {
         const unsigned num_reruns = 5u;
         const double lengthscale = 0.03;
@@ -303,12 +303,12 @@ public:
     /**
      * == Varying lengthscale, fixed diffusion strength ==
      */
-    void xTestDiffusionLengthscale()
+    void TestDiffusionLengthscale()
     {
-        const unsigned num_reruns = 10u;
+        const unsigned num_reruns = 40u;
         const double diff_str = 5.0 * 1e8;
 
-        for (const auto& lengthscale : {0.01, 0.03, 0.05, 0.07})
+        for (const auto& lengthscale : {0.003, 0.07})
         {
             for (unsigned rerun = 0; rerun < num_reruns; ++rerun)
             {
